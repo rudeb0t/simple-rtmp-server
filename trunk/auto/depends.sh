@@ -501,16 +501,64 @@ fi
 # cherrypy for http hooks callback, CherryPy-3.2.4
 #####################################################################################
 if [ $SRS_HTTP_CALLBACK = YES ]; then
+    echo "HTTP callbacks enabled. Checking for CherryPy..."
     if [[ -f ${SRS_OBJS}/CherryPy-3.2.4/setup.py ]]; then
         echo "CherryPy-3.2.4 is ok.";
     else
-        require_sudoer "configure --with-http-callback"
-        echo "install CherryPy-3.2.4"; 
-        (
-            sudo rm -rf ${SRS_OBJS}/CherryPy-3.2.4 && cd ${SRS_OBJS} && 
-            unzip -q ../3rdparty/CherryPy-3.2.4.zip && cd CherryPy-3.2.4 && 
-            sudo python setup.py install
-        )
+        echo "Checking Python environment..."
+        SRS_PYTHON_BINARY=`which python`
+        if [ "x${SRS_PYTHON_BINARY}" = "x" ]; then
+            echo "You do not have Python installed or it is not in your PATH."
+            echo "Please ensure that you have a usable Python before continuing."
+            exit 1
+        fi
+
+        ${SRS_PYTHON_BINARY} -c 'import cherrypy' >/dev/null 2>&1
+        if [ $? -eq 1 ]; then
+            if [ "x${VIRTUAL_ENV}" = "x" ]; then
+                echo "Not running in a virtualenv."
+                echo "Using Python found in ${SRS_PYTHON_BINARY}"
+                if [ "/usr/bin/python" = "${SRS_PYTHON_BINARY}" ]; then
+                    require_sudoer "configure --with-http-callback"
+                    SRS_PYTHON_CMD="sudo $SRS_PYTHON_BINARY"
+                    SRS_CLEAN_CHERRYPY="sudo rm -rf"
+                else
+                    if [ -x /usr/local/bin/brew ]; then
+                        SRS_PYTHON_CMD="$SRS_PYTHON_BINARY"
+                        SRS_CLEAN_CHERRYPY="rm -rf"
+                        echo "Your current Python is *probably* installed using homebrew."
+                    else
+                        SRS_PYTHON_CMD="sudo $SRS_PYTHON_BINARY"
+                        SRS_CLEAN_CHERRYPY="sudo rm -rf"
+                        echo "Your current Python is installed from source. Or MacPorts."
+                    fi
+                fi
+            else
+                echo "Running in virtualenv: ${VIRTUAL_ENV}"
+                SRS_PYTHON_CMD="$VIRTUAL_ENV/bin/python"
+                SRS_CLEAN_CHERRYPY="rm -rf"
+            fi
+
+            read -p "Do you want to install CherryPy in your current Python environment (yes/no)? " SRS_CONFIRMATION
+            case "${SRS_CONFIRMATION}" in
+                yes|YES)
+                    echo "Installing CherryPy..."
+                    ;;
+                *)
+                    echo "CherryPy installation cancelled. Install CherryPy manually before proceeding."
+                    exit 1
+                    ;;
+            esac
+
+            echo "install CherryPy-3.2.4"; 
+            (
+                ${SRS_CLEAN_CHERRYPY} ${SRS_OBJS}/CherryPy-3.2.4 && cd ${SRS_OBJS} && 
+                unzip -q ../3rdparty/CherryPy-3.2.4.zip && cd CherryPy-3.2.4 && 
+                ${SRS_PYTHON_CMD} setup.py install
+            )
+        else
+            echo "CherryPy is already installed."
+        fi
     fi
     # check status
     ret=$?; if [[ $ret -ne 0 ]]; then echo "build CherryPy-3.2.4 failed, ret=$ret"; exit $ret; fi
