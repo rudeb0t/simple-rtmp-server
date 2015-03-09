@@ -26,7 +26,10 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <srs_kernel_error.hpp>
 #include <srs_kernel_log.hpp>
 
+#ifdef __linux__
 #include <sys/epoll.h>
+
+
 bool srs_st_epoll_is_supported(void)
 {
     struct epoll_event ev;
@@ -38,27 +41,31 @@ bool srs_st_epoll_is_supported(void)
 
     return (errno != ENOSYS);
 }
+#endif
 
 int srs_init_st()
 {
     int ret = ERROR_SUCCESS;
     
+#ifdef __linux__
     // check epoll, some old linux donot support epoll.
     // @see https://github.com/winlinvip/simple-rtmp-server/issues/162
     if (!srs_st_epoll_is_supported()) {
         ret = ERROR_ST_SET_EPOLL;
-        srs_error("epoll required. ret=%d", ret);
+        srs_error("epoll required on Linux. ret=%d", ret);
         return ret;
     }
+#endif
     
-    // use linux epoll.
+    // Select the best event system available on the OS. In Linux this is
+    // epoll(). On BSD it will be kqueue.
     if (st_set_eventsys(ST_EVENTSYS_ALT) == -1) {
         ret = ERROR_ST_SET_EPOLL;
-        srs_error("st_set_eventsys use linux epoll failed. ret=%d", ret);
+        srs_error("st_set_eventsys use %s failed. ret=%d", st_get_eventsys_name(), ret);
         return ret;
     }
-    srs_verbose("st_set_eventsys use linux epoll success");
-    
+    srs_verbose("st_set_eventsys use %s success", st_get_eventsys_name());
+
     if(st_init() != 0){
         ret = ERROR_ST_INITIALIZE;
         srs_error("st_init failed. ret=%d", ret);
