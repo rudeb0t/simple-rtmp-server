@@ -231,65 +231,56 @@ function OSX_prepare()
     
     gcc --help >/dev/null 2>&1; ret=$?; if [[ 0 -ne $ret ]]; then
         echo "install gcc"
-        require_sudoer "sudo brew install gcc"
-        sudo brew install gcc; ret=$?; if [[ 0 -ne $ret ]]; then return $ret; fi
+        brew install gcc; ret=$?; if [[ 0 -ne $ret ]]; then return $ret; fi
         echo "install gcc success"
     fi
     
     g++ --help >/dev/null 2>&1; ret=$?; if [[ 0 -ne $ret ]]; then
         echo "install gcc-c++"
-        require_sudoer "sudo brew install gcc-c++"
-        sudo brew install gcc-c++; ret=$?; if [[ 0 -ne $ret ]]; then return $ret; fi
+        brew install gcc-c++; ret=$?; if [[ 0 -ne $ret ]]; then return $ret; fi
         echo "install gcc-c++ success"
     fi
     
     make --help >/dev/null 2>&1; ret=$?; if [[ 0 -ne $ret ]]; then
         echo "install make"
-        require_sudoer "sudo brew install make"
-        sudo brew install make; ret=$?; if [[ 0 -ne $ret ]]; then return $ret; fi
+        brew install make; ret=$?; if [[ 0 -ne $ret ]]; then return $ret; fi
         echo "install make success"
     fi
     
     patch --help >/dev/null 2>&1; ret=$?; if [[ 0 -ne $ret ]]; then
         echo "install patch"
-        require_sudoer "sudo brew install patch"
-        sudo brew install patch; ret=$?; if [[ 0 -ne $ret ]]; then return $ret; fi
+        brew install patch; ret=$?; if [[ 0 -ne $ret ]]; then return $ret; fi
         echo "install patch success"
     fi
     
     if [ $SRS_FFMPEG_TOOL = YES ]; then
         automake --help >/dev/null 2>&1; ret=$?; if [[ 0 -ne $ret ]]; then
             echo "install automake"
-            require_sudoer "sudo brew install automake"
-            sudo brew install automake; ret=$?; if [[ 0 -ne $ret ]]; then return $ret; fi
+            brew install automake; ret=$?; if [[ 0 -ne $ret ]]; then return $ret; fi
             echo "install automake success"
         fi
         
         autoconf --help >/dev/null 2>&1; ret=$?; if [[ 0 -ne $ret ]]; then
             echo "install autoconf"
-            require_sudoer "sudo brew install autoconf"
-            sudo brew install autoconf; ret=$?; if [[ 0 -ne $ret ]]; then return $ret; fi
+            brew install autoconf; ret=$?; if [[ 0 -ne $ret ]]; then return $ret; fi
             echo "install autoconf success"
         fi
         
         libtool --help >/dev/null 2>&1; ret=$?; if [[ 0 -ne $ret ]]; then
             echo "install libtool"
-            require_sudoer "sudo brew install libtool"
-            sudo brew install libtool; ret=$?; if [[ 0 -ne $ret ]]; then return $ret; fi
+            brew install libtool; ret=$?; if [[ 0 -ne $ret ]]; then return $ret; fi
             echo "install libtool success"
         fi
         
         if [[ ! -f /usr/include/pcre.h ]]; then
             echo "install pcre-devel"
-            require_sudoer "sudo brew install pcre-devel"
-            sudo brew install pcre-devel; ret=$?; if [[ 0 -ne $ret ]]; then return $ret; fi
+            brew install pcre-devel; ret=$?; if [[ 0 -ne $ret ]]; then return $ret; fi
             echo "install pcre-devel success"
         fi
         
         if [[ ! -f /usr/include/zlib.h ]]; then
             echo "install zlib-devel"
-            require_sudoer "sudo brew install zlib-devel"
-            sudo brew install zlib-devel; ret=$?; if [[ 0 -ne $ret ]]; then return $ret; fi
+            brew install zlib-devel; ret=$?; if [[ 0 -ne $ret ]]; then return $ret; fi
             echo "install zlib-devel success"
         fi
     fi
