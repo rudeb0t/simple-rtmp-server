@@ -28,6 +28,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #ifndef SRS_OSX
 #include <sys/epoll.h>
+
+
 bool srs_st_epoll_is_supported(void)
 {
     struct epoll_event ev;
@@ -50,14 +52,15 @@ int srs_init_st()
     // @see https://github.com/winlinvip/simple-rtmp-server/issues/162
     if (!srs_st_epoll_is_supported()) {
         ret = ERROR_ST_SET_EPOLL;
-        srs_error("epoll required. ret=%d", ret);
+        srs_error("epoll required on Linux. ret=%d", ret);
         return ret;
     }
     
-    // use linux epoll.
+    // Select the best event system available on the OS. In Linux this is
+    // epoll(). On BSD it will be kqueue.
     if (st_set_eventsys(ST_EVENTSYS_ALT) == -1) {
         ret = ERROR_ST_SET_EPOLL;
-        srs_error("st_set_eventsys use linux epoll failed. ret=%d", ret);
+        srs_error("st_set_eventsys use %s failed. ret=%d", st_get_eventsys_name(), ret);
         return ret;
     }
     srs_verbose("st_set_eventsys use linux epoll success");

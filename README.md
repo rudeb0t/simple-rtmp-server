@@ -674,6 +674,7 @@ Supported operating systems and hardware:
 * v1.0, 2015-01-01, hotfix [#270](https://github.com/winlinvip/simple-rtmp-server/issues/270), memory leak for http client post. 1.0.16
 * v1.0, 2014-12-29, hotfix [#267](https://github.com/winlinvip/simple-rtmp-server/issues/267), the forward dest ep should use server. 1.0.15
 * v1.0, 2014-12-29, hotfix [#268](https://github.com/winlinvip/simple-rtmp-server/issues/268), the hls pcr is negative when startup. 1.0.14
+* v1.0, 2014-12-26, use master as main stable branch with hotfixes. 1.0.13
 * v1.0, 2014-12-22, hotfix [#264](https://github.com/winlinvip/simple-rtmp-server/issues/264), ignore NALU when sequence header to make HLS happy. 1.0.12
 * v1.0, 2014-12-20, hotfix [#264](https://github.com/winlinvip/simple-rtmp-server/issues/264), support disconnect publish connect when hls error. 1.0.11
 * <strong>v1.0, 2014-12-05, [1.0 release(1.0.10)](https://github.com/winlinvip/simple-rtmp-server/releases/tag/1.0) released. 59391 lines.</strong>
