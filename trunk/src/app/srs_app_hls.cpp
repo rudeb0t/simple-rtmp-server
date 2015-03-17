@@ -203,13 +203,14 @@ int SrsHlsMuxer::sequence_no()
     return _sequence_no;
 }
 
-int SrsHlsMuxer::update_config(SrsRequest* r, string path, int fragment, int window) 
+int SrsHlsMuxer::update_config(SrsRequest* r, string entry_prefix, string path, int fragment, int window)
 {
     int ret = ERROR_SUCCESS;
     
     srs_freep(req);
     req = r->copy();
 
+    hls_entry_prefix = entry_prefix;
     hls_path = path;
     hls_fragment = fragment;
     hls_window = window;
@@ -300,8 +301,11 @@ int SrsHlsMuxer::segment_open(int64_t segment_start_dts)
     current->full_path += "/";
     current->full_path += filename;
     
-    // TODO: support base url, and so on.
-    current->uri = filename;
+    current->uri += hls_entry_prefix;
+    if (!hls_entry_prefix.empty() && !srs_string_ends_with(hls_entry_prefix, "/")) {
+        current->uri += "/";
+    }
+    current->uri += filename;
     
     std::string tmp_file = current->full_path + ".tmp";
     if ((ret = current->muxer->open(tmp_file.c_str())) != ERROR_SUCCESS) {
@@ -668,6 +672,8 @@ int SrsHlsCache::on_publish(SrsHlsMuxer* muxer, SrsRequest* req, int64_t segment
     int hls_fragment = (int)_srs_config->get_hls_fragment(vhost);
     int hls_window = (int)_srs_config->get_hls_window(vhost);
     
+    // get the hls m3u8 ts list entry prefix config
+    std::string entry_prefix = _srs_config->get_hls_entry_prefix(vhost);
     // get the hls path config
     std::string hls_path = _srs_config->get_hls_path(vhost);
     
@@ -675,7 +681,7 @@ int SrsHlsCache::on_publish(SrsHlsMuxer* muxer, SrsRequest* req, int64_t segment
     // for the HLS donot requires the EXT-X-MEDIA-SEQUENCE be monotonically increase.
     
     // open muxer
-    if ((ret = muxer->update_config(req, hls_path, hls_fragment, hls_window)) != ERROR_SUCCESS) {
+    if ((ret = muxer->update_config(req, entry_prefix, hls_path, hls_fragment, hls_window)) != ERROR_SUCCESS) {
         srs_error("m3u8 muxer update config failed. ret=%d", ret);
         return ret;
     }
@@ -729,6 +735,12 @@ int SrsHlsCache::write_audio(SrsAvcAacCodec* codec, SrsHlsMuxer* muxer, int64_t 
         if ((ret = muxer->flush_audio(cache)) != ERROR_SUCCESS) {
             return ret;
         }
+    }
+
+    // cache->audio will be free in flush_audio
+    // so we must check whether it's null ptr.
+    if (!cache->audio) {
+        return ret;
     }
 
     // TODO: config it.
