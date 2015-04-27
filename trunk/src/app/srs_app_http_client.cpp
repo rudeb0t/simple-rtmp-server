@@ -37,15 +37,13 @@ using namespace std;
 #include <srs_app_utility.hpp>
 #include <srs_core_autofree.hpp>
 
-// when error, http client sleep for a while and retry.
-#define SRS_HTTP_CLIENT_SLEEP_US (int64_t)(3*1000*1000LL)
-
 SrsHttpClient::SrsHttpClient()
 {
     connected = false;
     stfd = NULL;
     skt = NULL;
     parser = NULL;
+    timeout_us = 0;
 }
 
 SrsHttpClient::~SrsHttpClient()
@@ -54,7 +52,7 @@ SrsHttpClient::~SrsHttpClient()
     srs_freep(parser);
 }
 
-int SrsHttpClient::initialize(string h, int p)
+int SrsHttpClient::initialize(string h, int p, int64_t t_us)
 {
     int ret = ERROR_SUCCESS;
     
@@ -68,6 +66,7 @@ int SrsHttpClient::initialize(string h, int p)
     
     host = h;
     port = p;
+    timeout_us = t_us;
     
     return ret;
 }
@@ -87,13 +86,13 @@ int SrsHttpClient::post(string path, string req, SrsHttpMessage** ppmsg)
     // POST %s HTTP/1.1\r\nHost: %s\r\nContent-Length: %d\r\n\r\n%s
     std::stringstream ss;
     ss << "POST " << path << " "
-        << "HTTP/1.1" << __SRS_HTTP_CRLF
-        << "Host: " << host << __SRS_HTTP_CRLF
-        << "Connection: Keep-Alive" << __SRS_HTTP_CRLF
-        << "Content-Length: " << std::dec << req.length() << __SRS_HTTP_CRLF
-        << "User-Agent: " << RTMP_SIG_SRS_NAME << RTMP_SIG_SRS_VERSION << __SRS_HTTP_CRLF
-        << "Content-Type: application/json" << __SRS_HTTP_CRLF
-        << __SRS_HTTP_CRLF
+        << "HTTP/1.1" << SRS_HTTP_CRLF
+        << "Host: " << host << SRS_HTTP_CRLF
+        << "Connection: Keep-Alive" << SRS_HTTP_CRLF
+        << "Content-Length: " << std::dec << req.length() << SRS_HTTP_CRLF
+        << "User-Agent: " << RTMP_SIG_SRS_NAME << RTMP_SIG_SRS_VERSION << SRS_HTTP_CRLF
+        << "Content-Type: application/json" << SRS_HTTP_CRLF
+        << SRS_HTTP_CRLF
         << req;
     
     std::string data = ss.str();
@@ -133,13 +132,13 @@ int SrsHttpClient::get(string path, std::string req, SrsHttpMessage** ppmsg)
     // GET %s HTTP/1.1\r\nHost: %s\r\nContent-Length: %d\r\n\r\n%s
     std::stringstream ss;
     ss << "GET " << path << " "
-        << "HTTP/1.1" << __SRS_HTTP_CRLF
-        << "Host: " << host << __SRS_HTTP_CRLF
-        << "Connection: Keep-Alive" << __SRS_HTTP_CRLF
-        << "Content-Length: " << std::dec << req.length() << __SRS_HTTP_CRLF
-        << "User-Agent: " << RTMP_SIG_SRS_NAME << RTMP_SIG_SRS_VERSION << __SRS_HTTP_CRLF
-        << "Content-Type: application/json" << __SRS_HTTP_CRLF
-        << __SRS_HTTP_CRLF
+        << "HTTP/1.1" << SRS_HTTP_CRLF
+        << "Host: " << host << SRS_HTTP_CRLF
+        << "Connection: Keep-Alive" << SRS_HTTP_CRLF
+        << "Content-Length: " << std::dec << req.length() << SRS_HTTP_CRLF
+        << "User-Agent: " << RTMP_SIG_SRS_NAME << RTMP_SIG_SRS_VERSION << SRS_HTTP_CRLF
+        << "Content-Type: application/json" << SRS_HTTP_CRLF
+        << SRS_HTTP_CRLF
         << req;
 
     std::string data = ss.str();
@@ -183,10 +182,9 @@ int SrsHttpClient::connect()
     disconnect();
     
     // open socket.
-    int64_t timeout = SRS_HTTP_CLIENT_SLEEP_US;
-    if ((ret = srs_socket_connect(host, port, timeout, &stfd)) != ERROR_SUCCESS) {
+    if ((ret = srs_socket_connect(host, port, timeout_us, &stfd)) != ERROR_SUCCESS) {
         srs_warn("http client failed, server=%s, port=%d, timeout=%"PRId64", ret=%d",
-            host.c_str(), port, timeout, ret);
+            host.c_str(), port, timeout_us, ret);
         return ret;
     }
     srs_info("connect to server success. server=%s, port=%d", host, port);
@@ -194,6 +192,10 @@ int SrsHttpClient::connect()
     srs_assert(!skt);
     skt = new SrsStSocket(stfd);
     connected = true;
+    
+    // set the recv/send timeout in us.
+    skt->set_recv_timeout(timeout_us);
+    skt->set_send_timeout(timeout_us);
     
     return ret;
 }

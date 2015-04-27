@@ -31,17 +31,19 @@ using namespace std;
 #include <srs_app_json.hpp>
 #include <srs_app_kbps.hpp>
 #include <srs_app_conn.hpp>
+#include <srs_app_config.hpp>
+#include <srs_kernel_utility.hpp>
 
-int64_t __srs_gvid = getpid();
+int64_t srs_gvid = getpid();
 
-int64_t __srs_generate_id()
+int64_t srs_generate_id()
 {
-    return __srs_gvid++;
+    return srs_gvid++;
 }
 
 SrsStatisticVhost::SrsStatisticVhost()
 {
-    id = __srs_generate_id();
+    id = srs_generate_id();
     
     kbps = new SrsKbps();
     kbps->set_io(NULL, NULL);
@@ -54,7 +56,7 @@ SrsStatisticVhost::~SrsStatisticVhost()
 
 SrsStatisticStream::SrsStatisticStream()
 {
-    id = __srs_generate_id();
+    id = srs_generate_id();
     vhost = NULL;
     
     has_video = false;
@@ -87,7 +89,7 @@ SrsStatistic* SrsStatistic::_instance = new SrsStatistic();
 
 SrsStatistic::SrsStatistic()
 {
-    _server_id = __srs_generate_id();
+    _server_id = srs_generate_id();
     
     kbps = new SrsKbps();
     kbps->set_io(NULL, NULL);
@@ -250,22 +252,29 @@ int SrsStatistic::dumps_vhosts(stringstream& ss)
 {
     int ret = ERROR_SUCCESS;
 
-    ss << __SRS_JARRAY_START;
+    ss << SRS_JARRAY_START;
     std::map<std::string, SrsStatisticVhost*>::iterator it;
     for (it = vhosts.begin(); it != vhosts.end(); it++) {
         SrsStatisticVhost* vhost = it->second;
         if (it != vhosts.begin()) {
-            ss << __SRS_JFIELD_CONT;
+            ss << SRS_JFIELD_CONT;
         }
+        
+        // dumps the config of vhost.
+        bool hls_enabled = _srs_config->get_hls_enabled(vhost->vhost);
 
-        ss << __SRS_JOBJECT_START
-                << __SRS_JFIELD_ORG("id", vhost->id) << __SRS_JFIELD_CONT
-                << __SRS_JFIELD_STR("name", vhost->vhost) << __SRS_JFIELD_CONT
-                << __SRS_JFIELD_ORG("send_bytes", vhost->kbps->get_send_bytes()) << __SRS_JFIELD_CONT
-                << __SRS_JFIELD_ORG("recv_bytes", vhost->kbps->get_recv_bytes())
-            << __SRS_JOBJECT_END;
+        ss << SRS_JOBJECT_START
+                << SRS_JFIELD_ORG("id", vhost->id) << SRS_JFIELD_CONT
+                << SRS_JFIELD_STR("name", vhost->vhost) << SRS_JFIELD_CONT
+                << SRS_JFIELD_ORG("send_bytes", vhost->kbps->get_send_bytes()) << SRS_JFIELD_CONT
+                << SRS_JFIELD_ORG("recv_bytes", vhost->kbps->get_recv_bytes()) << SRS_JFIELD_CONT
+                << SRS_JFIELD_NAME("hls") << SRS_JOBJECT_START
+                    << SRS_JFIELD_BOOL("enabled", hls_enabled) << SRS_JFIELD_CONT
+                    << SRS_JFIELD_ORG("fragment", _srs_config->get_hls_fragment(vhost->vhost))
+                << SRS_JOBJECT_END
+            << SRS_JOBJECT_END;
     }
-    ss << __SRS_JARRAY_END;
+    ss << SRS_JARRAY_END;
 
     return ret;
 }
@@ -274,12 +283,12 @@ int SrsStatistic::dumps_streams(stringstream& ss)
 {
     int ret = ERROR_SUCCESS;
     
-    ss << __SRS_JARRAY_START;
+    ss << SRS_JARRAY_START;
     std::map<std::string, SrsStatisticStream*>::iterator it;
     for (it = streams.begin(); it != streams.end(); it++) {
         SrsStatisticStream* stream = it->second;
         if (it != streams.begin()) {
-            ss << __SRS_JFIELD_CONT;
+            ss << SRS_JFIELD_CONT;
         }
 
         int client_num = 0;
@@ -291,41 +300,43 @@ int SrsStatistic::dumps_streams(stringstream& ss)
             }
         }
 
-        ss << __SRS_JOBJECT_START
-                << __SRS_JFIELD_ORG("id", stream->id) << __SRS_JFIELD_CONT
-                << __SRS_JFIELD_STR("name", stream->stream) << __SRS_JFIELD_CONT
-                << __SRS_JFIELD_ORG("vhost", stream->vhost->id) << __SRS_JFIELD_CONT
-                << __SRS_JFIELD_ORG("clients", client_num) << __SRS_JFIELD_CONT
-                << __SRS_JFIELD_ORG("send_bytes", stream->kbps->get_send_bytes()) << __SRS_JFIELD_CONT
-                << __SRS_JFIELD_ORG("recv_bytes", stream->kbps->get_recv_bytes()) << __SRS_JFIELD_CONT;
-                
+        ss << SRS_JOBJECT_START
+                << SRS_JFIELD_ORG("id", stream->id) << SRS_JFIELD_CONT
+                << SRS_JFIELD_STR("name", stream->stream) << SRS_JFIELD_CONT
+                << SRS_JFIELD_ORG("vhost", stream->vhost->id) << SRS_JFIELD_CONT
+                << SRS_JFIELD_STR("app", stream->app) << SRS_JFIELD_CONT
+                << SRS_JFIELD_ORG("clients", client_num) << SRS_JFIELD_CONT
+                << SRS_JFIELD_ORG("send_bytes", stream->kbps->get_send_bytes()) << SRS_JFIELD_CONT
+                << SRS_JFIELD_ORG("recv_bytes", stream->kbps->get_recv_bytes()) << SRS_JFIELD_CONT
+                << SRS_JFIELD_ORG("live_ms", srs_get_system_time_ms()) << SRS_JFIELD_CONT;
+        
         if (!stream->has_video) {
-            ss  << __SRS_JFIELD_NULL("video") << __SRS_JFIELD_CONT;
+            ss  << SRS_JFIELD_NULL("video") << SRS_JFIELD_CONT;
         } else {
-            ss  << __SRS_JFIELD_NAME("video")
-                    << __SRS_JOBJECT_START
-                        << __SRS_JFIELD_STR("codec", srs_codec_video2str(stream->vcodec)) << __SRS_JFIELD_CONT
-                        << __SRS_JFIELD_STR("profile", srs_codec_avc_profile2str(stream->avc_profile)) << __SRS_JFIELD_CONT
-                        << __SRS_JFIELD_ORG("level", srs_codec_avc_level2str(stream->avc_level))
-                    << __SRS_JOBJECT_END
-                << __SRS_JFIELD_CONT;
+            ss  << SRS_JFIELD_NAME("video")
+                    << SRS_JOBJECT_START
+                        << SRS_JFIELD_STR("codec", srs_codec_video2str(stream->vcodec)) << SRS_JFIELD_CONT
+                        << SRS_JFIELD_STR("profile", srs_codec_avc_profile2str(stream->avc_profile)) << SRS_JFIELD_CONT
+                        << SRS_JFIELD_ORG("level", srs_codec_avc_level2str(stream->avc_level))
+                    << SRS_JOBJECT_END
+                << SRS_JFIELD_CONT;
         }
                 
         if (!stream->has_audio) {
-            ss  << __SRS_JFIELD_NULL("audio");
+            ss  << SRS_JFIELD_NULL("audio");
         } else {
-            ss  << __SRS_JFIELD_NAME("audio")
-                    << __SRS_JOBJECT_START
-                        << __SRS_JFIELD_STR("codec", srs_codec_audio2str(stream->acodec)) << __SRS_JFIELD_CONT
-                        << __SRS_JFIELD_ORG("sample_rate", (int)flv_sample_rates[stream->asample_rate]) << __SRS_JFIELD_CONT
-                        << __SRS_JFIELD_ORG("channel", (int)stream->asound_type + 1) << __SRS_JFIELD_CONT
-                        << __SRS_JFIELD_STR("profile", srs_codec_aac_object2str(stream->aac_object))
-                    << __SRS_JOBJECT_END;
+            ss  << SRS_JFIELD_NAME("audio")
+                    << SRS_JOBJECT_START
+                        << SRS_JFIELD_STR("codec", srs_codec_audio2str(stream->acodec)) << SRS_JFIELD_CONT
+                        << SRS_JFIELD_ORG("sample_rate", (int)flv_sample_rates[stream->asample_rate]) << SRS_JFIELD_CONT
+                        << SRS_JFIELD_ORG("channel", (int)stream->asound_type + 1) << SRS_JFIELD_CONT
+                        << SRS_JFIELD_STR("profile", srs_codec_aac_object2str(stream->aac_object))
+                    << SRS_JOBJECT_END;
         }
         
-        ss << __SRS_JOBJECT_END;
+        ss << SRS_JOBJECT_END;
     }
-    ss << __SRS_JARRAY_END;
+    ss << SRS_JARRAY_END;
     
     return ret;
 }
@@ -358,6 +369,7 @@ SrsStatisticStream* SrsStatistic::create_stream(SrsStatisticVhost* vhost, SrsReq
         stream = new SrsStatisticStream();
         stream->vhost = vhost;
         stream->stream = req->stream;
+        stream->app = req->app;
         stream->url = url;
         streams[url] = stream;
         return stream;

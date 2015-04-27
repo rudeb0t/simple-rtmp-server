@@ -76,6 +76,7 @@ class SrsListener
 protected:
     SrsListenerType _type;
 protected:
+    std::string _ip;
     int _port;
     SrsServer* _server;
 public:
@@ -83,7 +84,7 @@ public:
     virtual ~SrsListener();
 public:
     virtual SrsListenerType type();
-    virtual int listen(int port) = 0;
+    virtual int listen(std::string ip, int port) = 0;
 };
 
 /**
@@ -97,7 +98,7 @@ public:
     SrsStreamListener(SrsServer* server, SrsListenerType type);
     virtual ~SrsStreamListener();
 public:
-    virtual int listen(int port);
+    virtual int listen(std::string ip, int port);
 // ISrsTcpHandler
 public:
     virtual int on_tcp_client(st_netfd_t stfd);
@@ -116,7 +117,7 @@ public:
     SrsRtspListener(SrsServer* server, SrsListenerType type, SrsConfDirective* c);
     virtual ~SrsRtspListener();
 public:
-    virtual int listen(int port);
+    virtual int listen(std::string ip, int port);
 // ISrsTcpHandler
 public:
     virtual int on_tcp_client(st_netfd_t stfd);
@@ -134,7 +135,7 @@ public:
     SrsUdpCasterListener(SrsServer* server, SrsListenerType type, SrsConfDirective* c);
     virtual ~SrsUdpCasterListener();
 public:
-    virtual int listen(int port);
+    virtual int listen(std::string ip, int port);
 };
 #endif
 
@@ -167,6 +168,25 @@ private:
     /* Signal catching function. */
     /* Converts signal event to I/O event. */
     static void sig_catcher(int signo);
+};
+
+/**
+* the handler to the handle cycle in SRS RTMP server.
+*/
+class ISrsServerCycle
+{
+public:
+    ISrsServerCycle();
+    virtual ~ISrsServerCycle();
+public: 
+    /**
+    * initialize the cycle handler.
+    */
+    virtual int initialize() = 0;
+    /**
+    * do on_cycle while server doing cycle.
+    */
+    virtual int on_cycle(int connections) = 0;
 };
 
 /**
@@ -210,6 +230,10 @@ private:
     */
     SrsSignalManager* signal_manager;
     /**
+    * handle in server cycle.
+    */
+    ISrsServerCycle* handler;
+    /**
     * user send the signal, convert to variable.
     */
     bool signal_reload;
@@ -226,7 +250,7 @@ public:
     virtual void destroy();
 // server startup workflow, @see run_master()
 public:
-    virtual int initialize();
+    virtual int initialize(ISrsServerCycle* cycle_handler);
     virtual int initialize_signal();
     virtual int acquire_pid_file();
     virtual int initialize_st();

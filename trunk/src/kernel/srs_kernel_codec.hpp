@@ -234,8 +234,8 @@ extern int flv_sample_rates[];
 */
 extern int aac_sample_rates[];
 
-#define __SRS_SRS_MAX_CODEC_SAMPLE 128
-#define __SRS_AAC_SAMPLE_RATE_UNSET 15
+#define SRS_SRS_MAX_CODEC_SAMPLE 128
+#define SRS_AAC_SAMPLE_RATE_UNSET 15
 
 // in ms, for HLS aac flush the audio
 #define SRS_CONF_DEFAULT_AAC_DELAY 60
@@ -274,6 +274,52 @@ enum SrsCodecAudioSoundType
     SrsCodecAudioSoundTypeMono                      = 0,
     SrsCodecAudioSoundTypeStereo                    = 1,
 };
+
+/**
+ * Table 7-1 – NAL unit type codes, syntax element categories, and NAL unit type classes
+ * H.264-AVC-ISO_IEC_14496-10-2012.pdf, page 83.
+ */
+enum SrsAvcNaluType
+{
+    // Unspecified
+    SrsAvcNaluTypeReserved = 0,
+    
+    // Coded slice of a non-IDR picture slice_layer_without_partitioning_rbsp( )
+    SrsAvcNaluTypeNonIDR = 1,
+    // Coded slice data partition A slice_data_partition_a_layer_rbsp( )
+    SrsAvcNaluTypeDataPartitionA = 2,
+    // Coded slice data partition B slice_data_partition_b_layer_rbsp( )
+    SrsAvcNaluTypeDataPartitionB = 3,
+    // Coded slice data partition C slice_data_partition_c_layer_rbsp( )
+    SrsAvcNaluTypeDataPartitionC = 4,
+    // Coded slice of an IDR picture slice_layer_without_partitioning_rbsp( )
+    SrsAvcNaluTypeIDR = 5,
+    // Supplemental enhancement information (SEI) sei_rbsp( )
+    SrsAvcNaluTypeSEI = 6,
+    // Sequence parameter set seq_parameter_set_rbsp( )
+    SrsAvcNaluTypeSPS = 7,
+    // Picture parameter set pic_parameter_set_rbsp( )
+    SrsAvcNaluTypePPS = 8,
+    // Access unit delimiter access_unit_delimiter_rbsp( )
+    SrsAvcNaluTypeAccessUnitDelimiter = 9,
+    // End of sequence end_of_seq_rbsp( )
+    SrsAvcNaluTypeEOSequence = 10,
+    // End of stream end_of_stream_rbsp( )
+    SrsAvcNaluTypeEOStream = 11,
+    // Filler data filler_data_rbsp( )
+    SrsAvcNaluTypeFilterData = 12,
+    // Sequence parameter set extension seq_parameter_set_extension_rbsp( )
+    SrsAvcNaluTypeSPSExt = 13,
+    // Prefix NAL unit prefix_nal_unit_rbsp( )
+    SrsAvcNaluTypePrefixNALU = 14,
+    // Subset sequence parameter set subset_seq_parameter_set_rbsp( )
+    SrsAvcNaluTypeSubsetSPS = 15,
+    // Coded slice of an auxiliary coded picture without partitioning slice_layer_without_partitioning_rbsp( )
+    SrsAvcNaluTypeLayerWithoutPartition = 19,
+    // Coded slice extension slice_layer_extension_rbsp( )
+    SrsAvcNaluTypeCodedSliceExt = 20,
+};
+std::string srs_codec_avc_nalu2str(SrsAvcNaluType nalu_type);
 
 /**
 * the codec sample unit.
@@ -319,7 +365,7 @@ public:
     * where avc/h264 video packet may contains multiple buffer.
     */
     int nb_sample_units;
-    SrsCodecSampleUnit sample_units[__SRS_SRS_MAX_CODEC_SAMPLE];
+    SrsCodecSampleUnit sample_units[SRS_SRS_MAX_CODEC_SAMPLE];
 public:
     /**
     * whether the sample is video sample which demux from video packet.
@@ -334,6 +380,9 @@ public:
     // video specified
     SrsCodecVideoAVCFrame frame_type;
     SrsCodecVideoAVCType avc_packet_type;
+    // whether sample_units contains IDR frame.
+    bool has_idr;
+    SrsAvcNaluType first_nalu_type;
 public:
     // audio specified
     SrsCodecAudio acodec;
@@ -406,9 +455,9 @@ enum SrsAacObjectType
     SrsAacObjectTypeAacSSR = 3,
     
     // AAC HE = LC+SBR
-    SrsAacObjectTypeHE = 5,
+    SrsAacObjectTypeAacHE = 5,
     // AAC HEv2 = LC+SBR+PS
-    SrsAacObjectTypeHEV2 = 29,
+    SrsAacObjectTypeAacHEV2 = 29,
 };
 std::string srs_codec_aac_object2str(SrsAacObjectType aac_object);
 // ts/hls/adts audio header profile to RTMP sequence header object type.
@@ -580,6 +629,11 @@ private:
     * decode the sps and pps.
     */
     virtual int avc_demux_sps_pps(SrsStream* stream);
+    /**
+     * decode the sps rbsp stream.
+     */
+    virtual int avc_demux_sps();
+    virtual int avc_demux_sps_rbsp(char* rbsp, int nb_rbsp);
     /**
     * demux the avc NALU in "AnnexB" 
     * from H.264-AVC-ISO_IEC_14496-10.pdf, page 211.

@@ -46,6 +46,53 @@ using namespace std;
 // @see SRS_SYS_TIME_RESOLUTION_MS_TIMES
 #define SYS_TIME_RESOLUTION_US 300*1000
 
+int srs_avc_nalu_read_uev(SrsBitStream* stream, int32_t& v)
+{
+    int ret = ERROR_SUCCESS;
+    
+    if (stream->empty()) {
+        return ERROR_AVC_NALU_UEV;
+    }
+    
+    // ue(v) in 9.1 Parsing process for Exp-Golomb codes
+    // H.264-AVC-ISO_IEC_14496-10-2012.pdf, page 227.
+    // Syntax elements coded as ue(v), me(v), or se(v) are Exp-Golomb-coded.
+    //      leadingZeroBits = -1;
+    //      for( b = 0; !b; leadingZeroBits++ )
+    //          b = read_bits( 1 )
+    // The variable codeNum is then assigned as follows:
+    //      codeNum = (2<<leadingZeroBits) – 1 + read_bits( leadingZeroBits )
+    int leadingZeroBits = -1;
+    for (int8_t b = 0; !b && !stream->empty(); leadingZeroBits++) {
+        b = stream->read_bit();
+    }
+    
+    if (leadingZeroBits >= 31) {
+        return ERROR_AVC_NALU_UEV;
+    }
+    
+    v = (1 << leadingZeroBits) - 1;
+    for (int i = 0; i < leadingZeroBits; i++) {
+        int32_t b = stream->read_bit();
+        v += b << (leadingZeroBits - 1);
+    }
+    
+    return ret;
+}
+
+int srs_avc_nalu_read_bit(SrsBitStream* stream, int8_t& v)
+{
+    int ret = ERROR_SUCCESS;
+    
+    if (stream->empty()) {
+        return ERROR_AVC_NALU_UEV;
+    }
+    
+    v = stream->read_bit();
+    
+    return ret;
+}
+
 static int64_t _srs_system_time_us_cache = 0;
 static int64_t _srs_system_time_startup_time = 0;
 
@@ -87,7 +134,7 @@ int64_t srs_update_system_time_ms()
     if (_srs_system_time_us_cache <= 0) {
         _srs_system_time_us_cache = now_us;
         _srs_system_time_startup_time = now_us;
-        return _srs_system_time_us_cache;
+        return _srs_system_time_us_cache / 1000;
     }
     
     // use relative time.
@@ -104,7 +151,7 @@ int64_t srs_update_system_time_ms()
     srs_info("system time updated, startup=%"PRId64"us, now=%"PRId64"us", 
         _srs_system_time_startup_time, _srs_system_time_us_cache);
     
-    return _srs_system_time_us_cache;
+    return _srs_system_time_us_cache / 1000;
 }
 
 string srs_dns_resolve(string host)
@@ -226,7 +273,17 @@ bool srs_string_ends_with(string str, string flag)
     return str.rfind(flag) == str.length() - flag.length();
 }
 
-int __srs_create_dir_recursively(string dir)
+bool srs_string_starts_with(string str, string flag)
+{
+    return str.find(flag) == 0;
+}
+
+bool srs_string_contains(string str, string flag)
+{
+    return str.find(flag) != string::npos;
+}
+
+int srs_do_create_dir_recursively(string dir)
 {
     int ret = ERROR_SUCCESS;
     
@@ -239,7 +296,7 @@ int __srs_create_dir_recursively(string dir)
     size_t pos;
     if ((pos = dir.rfind("/")) != std::string::npos) {
         std::string parent = dir.substr(0, pos);
-        ret = __srs_create_dir_recursively(parent);
+        ret = srs_do_create_dir_recursively(parent);
         // return for error.
         if (ret != ERROR_SUCCESS && ret != ERROR_SYSTEM_DIR_EXISTS) {
             return ret;
@@ -268,7 +325,7 @@ int srs_create_dir_recursively(string dir)
 {
     int ret = ERROR_SUCCESS;
     
-    ret = __srs_create_dir_recursively(dir);
+    ret = srs_do_create_dir_recursively(dir);
     
     if (ret == ERROR_SYSTEM_DIR_EXISTS) {
         return ERROR_SUCCESS;
@@ -287,6 +344,37 @@ bool srs_path_exists(std::string path)
     }
 
     return false;
+}
+
+string srs_path_dirname(string path)
+{
+    std::string dirname = path;
+    size_t pos = string::npos;
+    
+    if ((pos = dirname.rfind("/")) != string::npos) {
+        if (pos == 0) {
+            return "/";
+        }
+        dirname = dirname.substr(0, pos);
+    }
+    
+    return dirname;
+}
+
+string srs_path_basename(string path)
+{
+    std::string dirname = path;
+    size_t pos = string::npos;
+    
+    if ((pos = dirname.rfind("/")) != string::npos) {
+        // the basename("/") is "/"
+        if (dirname.length() == 1) {
+            return dirname;
+        }
+        dirname = dirname.substr(pos + 1);
+    }
+    
+    return dirname;
 }
 
 bool srs_avc_startswith_annexb(SrsStream* stream, int* pnb_start_code)
@@ -323,7 +411,7 @@ bool srs_aac_startswith_adts(SrsStream* stream)
     char* bytes = stream->data() + stream->pos();
     char* p = bytes;
     
-    if (!stream->require(p - bytes + 2)) {
+    if (!stream->require((int)(p - bytes) + 2)) {
         return false;
     }
     

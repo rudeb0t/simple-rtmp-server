@@ -53,22 +53,22 @@ class SrsFastBuffer;
 
 // http specification
 // CR             = <US-ASCII CR, carriage return (13)>
-#define __SRS_HTTP_CR SRS_CONSTS_CR // 0x0D
+#define SRS_HTTP_CR SRS_CONSTS_CR // 0x0D
 // LF             = <US-ASCII LF, linefeed (10)>
-#define __SRS_HTTP_LF SRS_CONSTS_LF // 0x0A
+#define SRS_HTTP_LF SRS_CONSTS_LF // 0x0A
 // SP             = <US-ASCII SP, space (32)>
-#define __SRS_HTTP_SP ' ' // 0x20
+#define SRS_HTTP_SP ' ' // 0x20
 // HT             = <US-ASCII HT, horizontal-tab (9)>
-#define __SRS_HTTP_HT '\x09' // 0x09
+#define SRS_HTTP_HT '\x09' // 0x09
 
 // HTTP/1.1 defines the sequence CR LF as the end-of-line marker for all
 // protocol elements except the entity-body (see appendix 19.3 for
 // tolerant applications). 
-#define __SRS_HTTP_CRLF "\r\n" // 0x0D0A
-#define __SRS_HTTP_CRLFCRLF "\r\n\r\n" // 0x0D0A0D0A
+#define SRS_HTTP_CRLF "\r\n" // 0x0D0A
+#define SRS_HTTP_CRLFCRLF "\r\n\r\n" // 0x0D0A0D0A
 
 // @see SrsHttpMessage._http_ts_send_buffer
-#define __SRS_HTTP_TS_SEND_BUFFER_SIZE 4096
+#define SRS_HTTP_TS_SEND_BUFFER_SIZE 4096
 
 // helper function: response in json format.
 extern int srs_go_http_response_json(ISrsHttpResponseWriter* w, std::string data);
@@ -196,10 +196,13 @@ public:
     */
     virtual bool eof() = 0;
     /**
-    * read from the response body.
-    * @remark when eof(), return error.
-    */
-    virtual int read(std::string& data) = 0;
+     * read from the response body.
+     * @param data, the buffer to read data buffer to.
+     * @param nb_data, the max size of data buffer.
+     * @param nb_read, the actual read size of bytes. NULL to ignore.
+     * @remark when eof(), return error.
+     */
+    virtual int read(char* data, int nb_data, int* nb_read) = 0;
 };
 
 // Objects implementing the Handler interface can be
@@ -431,7 +434,10 @@ private:
     SrsHttpMessage* owner;
     SrsFastBuffer* buffer;
     bool is_eof;
-    int64_t nb_read;
+    // the left bytes in chunk.
+    int nb_left_chunk;
+    // already read total bytes.
+    int64_t nb_total_read;
 public:
     SrsHttpResponseReader(SrsHttpMessage* msg, SrsStSocket* io);
     virtual ~SrsHttpResponseReader();
@@ -443,10 +449,10 @@ public:
 // interface ISrsHttpResponseReader
 public:
     virtual bool eof();
-    virtual int read(std::string& data);
+    virtual int read(char* data, int nb_data, int* nb_read);
 private:
-    virtual int read_chunked(std::string& data);
-    virtual int read_specified(int max, std::string& data);
+    virtual int read_chunked(char* data, int nb_data, int* nb_read);
+    virtual int read_specified(char* data, int nb_data, int* nb_read);
 };
 
 // for http header.
@@ -593,7 +599,7 @@ private:
     http_parser header;
     std::string url;
     std::vector<SrsHttpHeaderField> headers;
-    int body_parsed;
+    int header_parsed;
 public:
     SrsHttpParser();
     virtual ~SrsHttpParser();

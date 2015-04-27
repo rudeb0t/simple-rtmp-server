@@ -27,7 +27,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include <fcntl.h>
 #include <sstream>
-#include <sys/time.h>
 #include <algorithm>
 using namespace std;
 
@@ -42,15 +41,10 @@ using namespace std;
 #include <srs_rtmp_amf0.hpp>
 #include <srs_kernel_stream.hpp>
 #include <srs_app_json.hpp>
+#include <srs_app_utility.hpp>
 
 // update the flv duration and filesize every this interval in ms.
-#define __SRS_DVR_UPDATE_DURATION_INTERVAL 60000
-
-// the sleep interval for http async callback.
-#define SRS_AUTO_ASYNC_CALLBACL_SLEEP_US 300000
-
-// the use raction for dvr rpc.
-#define SRS_DVR_USER_ACTION_REAP_SEGMENT "reap_segment"
+#define SRS_DVR_UPDATE_DURATION_INTERVAL 60000
 
 SrsFlvSegment::SrsFlvSegment(SrsDvrPlan* p)
 {
@@ -272,11 +266,11 @@ int SrsFlvSegment::write_metadata(SrsSharedPtrMessage* metadata)
     return ret;
 }
 
-int SrsFlvSegment::write_audio(SrsSharedPtrMessage* __audio)
+int SrsFlvSegment::write_audio(SrsSharedPtrMessage* shared_audio)
 {
     int ret = ERROR_SUCCESS;
 
-    SrsSharedPtrMessage* audio = __audio->copy();
+    SrsSharedPtrMessage* audio = shared_audio->copy();
     SrsAutoFree(SrsSharedPtrMessage, audio);
     
     if ((jitter->correct(audio, 0, 0, jitter_algorithm)) != ERROR_SUCCESS) {
@@ -297,11 +291,11 @@ int SrsFlvSegment::write_audio(SrsSharedPtrMessage* __audio)
     return ret;
 }
 
-int SrsFlvSegment::write_video(SrsSharedPtrMessage* __video)
+int SrsFlvSegment::write_video(SrsSharedPtrMessage* shared_video)
 {
     int ret = ERROR_SUCCESS;
 
-    SrsSharedPtrMessage* video = __video->copy();
+    SrsSharedPtrMessage* video = shared_video->copy();
     SrsAutoFree(SrsSharedPtrMessage, video);
     
     char* payload = video->payload;
@@ -422,76 +416,8 @@ string SrsFlvSegment::generate_path()
     
     // the flv file path
     std::string flv_path = path_config;
-    
-    // variable [vhost]
-    flv_path = srs_string_replace(flv_path, "[vhost]", req->vhost);
-    // variable [app]
-    flv_path = srs_string_replace(flv_path, "[app]", req->app);
-    // variable [stream]
-    flv_path = srs_string_replace(flv_path, "[stream]", req->stream);
-    
-    // date and time substitude
-    // clock time
-    timeval tv;
-    if (gettimeofday(&tv, NULL) == -1) {
-        return flv_path;
-    }
-    
-    // to calendar time
-    struct tm* tm;
-    if ((tm = localtime(&tv.tv_sec)) == NULL) {
-        return flv_path;
-    }
-    
-    // the buffer to format the date and time.
-    char buf[64];
-    
-    // [2006], replace with current year.
-    if (true) {
-        snprintf(buf, sizeof(buf), "%d", 1900 + tm->tm_year);
-        flv_path = srs_string_replace(flv_path, "[2006]", buf);
-    }
-    // [2006], replace with current year.
-    if (true) {
-        snprintf(buf, sizeof(buf), "%d", 1900 + tm->tm_year);
-        flv_path = srs_string_replace(flv_path, "[2006]", buf);
-    }
-    // [01], replace this const to current month.
-    if (true) {
-        snprintf(buf, sizeof(buf), "%d", 1 + tm->tm_mon);
-        flv_path = srs_string_replace(flv_path, "[01]", buf);
-    }
-    // [02], replace this const to current date.
-    if (true) {
-        snprintf(buf, sizeof(buf), "%d", tm->tm_mday);
-        flv_path = srs_string_replace(flv_path, "[02]", buf);
-    }
-    // [15], replace this const to current hour.
-    if (true) {
-        snprintf(buf, sizeof(buf), "%d", tm->tm_hour);
-        flv_path = srs_string_replace(flv_path, "[15]", buf);
-    }
-    // [04], repleace this const to current minute.
-    if (true) {
-        snprintf(buf, sizeof(buf), "%d", tm->tm_min);
-        flv_path = srs_string_replace(flv_path, "[04]", buf);
-    }
-    // [05], repleace this const to current second.
-    if (true) {
-        snprintf(buf, sizeof(buf), "%d", tm->tm_sec);
-        flv_path = srs_string_replace(flv_path, "[05]", buf);
-    }
-    // [999], repleace this const to current millisecond.
-    if (true) {
-        snprintf(buf, sizeof(buf), "%03d", (int)(tv.tv_usec / 1000));
-        flv_path = srs_string_replace(flv_path, "[999]", buf);
-    }
-    // [timestamp],replace this const to current UNIX timestamp in ms.
-    if (true) {
-        int64_t now_us = ((int64_t)tv.tv_sec) * 1000 * 1000 + (int64_t)tv.tv_usec;
-        snprintf(buf, sizeof(buf), "%"PRId64, now_us / 1000);
-        flv_path = srs_string_replace(flv_path, "[timestamp]", buf);
-    }
+    flv_path = srs_path_build_stream(flv_path, req->vhost, req->app, req->stream);
+    flv_path = srs_path_build_timestamp(flv_path);
 
     return flv_path;
 }
@@ -570,14 +496,6 @@ int SrsFlvSegment::on_reload_vhost_dvr(std::string /*vhost*/)
     return ret;
 }
 
-ISrsDvrAsyncCall::ISrsDvrAsyncCall()
-{
-}
-
-ISrsDvrAsyncCall::~ISrsDvrAsyncCall()
-{
-}
-
 SrsDvrAsyncCallOnDvr::SrsDvrAsyncCallOnDvr(SrsRequest* r, string p)
 {
     req = r;
@@ -602,13 +520,10 @@ int SrsDvrAsyncCallOnDvr::call()
             return ret;
         }
         
-        int connection_id = _srs_context->get_id();
-        std::string ip = req->ip;
-        std::string cwd = _srs_config->cwd();
         std::string file = path;
         for (int i = 0; i < (int)on_dvr->args.size(); i++) {
             std::string url = on_dvr->args.at(i);
-            if ((ret = SrsHttpHooks::on_dvr(url, connection_id, ip, req, cwd, file)) != ERROR_SUCCESS) {
+            if ((ret = SrsHttpHooks::on_dvr(url, req, file)) != ERROR_SUCCESS) {
                 srs_error("hook client on_dvr failed. url=%s, ret=%d", url.c_str(), ret);
                 return ret;
             }
@@ -624,62 +539,6 @@ string SrsDvrAsyncCallOnDvr::to_string()
     std::stringstream ss;
     ss << "vhost=" << req->vhost << ", file=" << path;
     return ss.str();
-}
-
-SrsDvrAsyncCallThread::SrsDvrAsyncCallThread()
-{
-    pthread = new SrsThread("async", this, SRS_AUTO_ASYNC_CALLBACL_SLEEP_US, true);
-}
-
-SrsDvrAsyncCallThread::~SrsDvrAsyncCallThread()
-{
-    stop();
-    srs_freep(pthread);
-
-    std::vector<ISrsDvrAsyncCall*>::iterator it;
-    for (it = callbacks.begin(); it != callbacks.end(); ++it) {
-        ISrsDvrAsyncCall* call = *it;
-        srs_freep(call);
-    }
-    callbacks.clear();
-}
-
-int SrsDvrAsyncCallThread::call(ISrsDvrAsyncCall* c)
-{
-    int ret = ERROR_SUCCESS;
-
-    callbacks.push_back(c);
-
-    return ret;
-}
-
-int SrsDvrAsyncCallThread::start()
-{
-    return pthread->start();
-}
-
-void SrsDvrAsyncCallThread::stop()
-{
-    pthread->stop();
-}
-
-int SrsDvrAsyncCallThread::cycle()
-{
-    int ret = ERROR_SUCCESS;
-    
-    std::vector<ISrsDvrAsyncCall*> copies = callbacks;
-    callbacks.clear();
-
-    std::vector<ISrsDvrAsyncCall*>::iterator it;
-    for (it = copies.begin(); it != copies.end(); ++it) {
-        ISrsDvrAsyncCall* call = *it;
-        if ((ret = call->call()) != ERROR_SUCCESS) {
-            srs_warn("dvr: ignore callback %s, ret=%d", call->to_string().c_str(), ret);
-        }
-        srs_freep(call);
-    }
-
-    return ret;
 }
 
 SrsDvrPlan::SrsDvrPlan()
@@ -724,7 +583,7 @@ int64_t SrsDvrPlan::filter_timestamp(int64_t timestamp)
     return timestamp;
 }
 
-int SrsDvrPlan::on_meta_data(SrsSharedPtrMessage* __metadata)
+int SrsDvrPlan::on_meta_data(SrsSharedPtrMessage* shared_metadata)
 {
     int ret = ERROR_SUCCESS;
     
@@ -732,10 +591,10 @@ int SrsDvrPlan::on_meta_data(SrsSharedPtrMessage* __metadata)
         return ret;
     }
     
-    return segment->write_metadata(__metadata);
+    return segment->write_metadata(shared_metadata);
 }
 
-int SrsDvrPlan::on_audio(SrsSharedPtrMessage* __audio)
+int SrsDvrPlan::on_audio(SrsSharedPtrMessage* shared_audio)
 {
     int ret = ERROR_SUCCESS;
     
@@ -743,14 +602,14 @@ int SrsDvrPlan::on_audio(SrsSharedPtrMessage* __audio)
         return ret;
     }
 
-    if ((ret = segment->write_audio(__audio)) != ERROR_SUCCESS) {
+    if ((ret = segment->write_audio(shared_audio)) != ERROR_SUCCESS) {
         return ret;
     }
     
     return ret;
 }
 
-int SrsDvrPlan::on_video(SrsSharedPtrMessage* __video)
+int SrsDvrPlan::on_video(SrsSharedPtrMessage* shared_video)
 {
     int ret = ERROR_SUCCESS;
     
@@ -758,7 +617,7 @@ int SrsDvrPlan::on_video(SrsSharedPtrMessage* __video)
         return ret;
     }
 
-    if ((ret = segment->write_video(__video)) != ERROR_SUCCESS) {
+    if ((ret = segment->write_video(shared_video)) != ERROR_SUCCESS) {
         return ret;
     }
     
@@ -876,30 +735,30 @@ void SrsDvrAppendPlan::on_unpublish()
 {
 }
 
-int SrsDvrAppendPlan::on_audio(SrsSharedPtrMessage* __audio)
+int SrsDvrAppendPlan::on_audio(SrsSharedPtrMessage* shared_audio)
 {
     int ret = ERROR_SUCCESS;
 
-    if ((ret = update_duration(__audio)) != ERROR_SUCCESS) {
+    if ((ret = update_duration(shared_audio)) != ERROR_SUCCESS) {
         return ret;
     }
     
-    if ((ret = SrsDvrPlan::on_audio(__audio)) != ERROR_SUCCESS) {
+    if ((ret = SrsDvrPlan::on_audio(shared_audio)) != ERROR_SUCCESS) {
         return ret;
     }
 
     return ret;
 }
 
-int SrsDvrAppendPlan::on_video(SrsSharedPtrMessage* __video)
+int SrsDvrAppendPlan::on_video(SrsSharedPtrMessage* shared_video)
 {
     int ret = ERROR_SUCCESS;
 
-    if ((ret = update_duration(__video)) != ERROR_SUCCESS) {
+    if ((ret = update_duration(shared_video)) != ERROR_SUCCESS) {
         return ret;
     }
     
-    if ((ret = SrsDvrPlan::on_video(__video)) != ERROR_SUCCESS) {
+    if ((ret = SrsDvrPlan::on_video(shared_video)) != ERROR_SUCCESS) {
         return ret;
     }
 
@@ -920,7 +779,7 @@ int SrsDvrAppendPlan::update_duration(SrsSharedPtrMessage* msg)
         return ret;
     }
 
-    if (__SRS_DVR_UPDATE_DURATION_INTERVAL > msg->timestamp - last_update_time) {
+    if (SRS_DVR_UPDATE_DURATION_INTERVAL > msg->timestamp - last_update_time) {
         return ret;
     }
     last_update_time = msg->timestamp;
@@ -991,54 +850,54 @@ void SrsDvrSegmentPlan::on_unpublish()
 {
 }
 
-int SrsDvrSegmentPlan::on_meta_data(SrsSharedPtrMessage* __metadata)
+int SrsDvrSegmentPlan::on_meta_data(SrsSharedPtrMessage* shared_metadata)
 {
     int ret = ERROR_SUCCESS;
     
     srs_freep(metadata);
-    metadata = __metadata->copy();
+    metadata = shared_metadata->copy();
     
-    if ((ret = SrsDvrPlan::on_meta_data(__metadata)) != ERROR_SUCCESS) {
+    if ((ret = SrsDvrPlan::on_meta_data(shared_metadata)) != ERROR_SUCCESS) {
         return ret;
     }
 
     return ret;
 }
 
-int SrsDvrSegmentPlan::on_audio(SrsSharedPtrMessage* __audio)
+int SrsDvrSegmentPlan::on_audio(SrsSharedPtrMessage* shared_audio)
 {
     int ret = ERROR_SUCCESS;
     
-    if (SrsFlvCodec::audio_is_sequence_header(__audio->payload, __audio->size)) {
+    if (SrsFlvCodec::audio_is_sequence_header(shared_audio->payload, shared_audio->size)) {
         srs_freep(sh_audio);
-        sh_audio = __audio->copy();
+        sh_audio = shared_audio->copy();
     }
 
-    if ((ret = update_duration(__audio)) != ERROR_SUCCESS) {
+    if ((ret = update_duration(shared_audio)) != ERROR_SUCCESS) {
         return ret;
     }
     
-    if ((ret = SrsDvrPlan::on_audio(__audio)) != ERROR_SUCCESS) {
+    if ((ret = SrsDvrPlan::on_audio(shared_audio)) != ERROR_SUCCESS) {
         return ret;
     }
 
     return ret;
 }
 
-int SrsDvrSegmentPlan::on_video(SrsSharedPtrMessage* __video)
+int SrsDvrSegmentPlan::on_video(SrsSharedPtrMessage* shared_video)
 {
     int ret = ERROR_SUCCESS;
 
-    if (SrsFlvCodec::video_is_sequence_header(__video->payload, __video->size)) {
+    if (SrsFlvCodec::video_is_sequence_header(shared_video->payload, shared_video->size)) {
         srs_freep(sh_video);
-        sh_video = __video->copy();
+        sh_video = shared_video->copy();
     }
 
-    if ((ret = update_duration(__video)) != ERROR_SUCCESS) {
+    if ((ret = update_duration(shared_video)) != ERROR_SUCCESS) {
         return ret;
     }
     
-    if ((ret = SrsDvrPlan::on_video(__video)) != ERROR_SUCCESS) {
+    if ((ret = SrsDvrPlan::on_video(shared_video)) != ERROR_SUCCESS) {
         return ret;
     }
 
@@ -1167,14 +1026,14 @@ int SrsDvr::on_meta_data(SrsOnMetaDataPacket* m)
     return ret;
 }
 
-int SrsDvr::on_audio(SrsSharedPtrMessage* __audio)
+int SrsDvr::on_audio(SrsSharedPtrMessage* shared_audio)
 {
-    return plan->on_audio(__audio);
+    return plan->on_audio(shared_audio);
 }
 
-int SrsDvr::on_video(SrsSharedPtrMessage* __video)
+int SrsDvr::on_video(SrsSharedPtrMessage* shared_video)
 {
-    return plan->on_video(__video);
+    return plan->on_video(shared_video);
 }
 
 #endif

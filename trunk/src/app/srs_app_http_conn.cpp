@@ -285,7 +285,7 @@ int SrsStreamCache::cycle()
 
         if (pprint->can_print()) {
             srs_trace("-> "SRS_CONSTS_LOG_HTTP_STREAM_CACHE" http: got %d msgs, age=%d, min=%d, mw=%d", 
-                pprint->age(), count, SRS_PERF_MW_MIN_MSGS, SRS_CONSTS_RTMP_PULSE_TIMEOUT_US / 1000);
+                count, pprint->age(), SRS_PERF_MW_MIN_MSGS, SRS_CONSTS_RTMP_PULSE_TIMEOUT_US / 1000);
         }
     
         // free the messages.
@@ -644,7 +644,7 @@ int SrsLiveStream::serve_http(ISrsHttpResponseWriter* w, SrsHttpMessage* r)
 
         if (pprint->can_print()) {
             srs_info("-> "SRS_CONSTS_LOG_HTTP_STREAM" http: got %d msgs, age=%d, min=%d, mw=%d", 
-                pprint->age(), count, SRS_PERF_MW_MIN_MSGS, SRS_CONSTS_RTMP_PULSE_TIMEOUT_US / 1000);
+                count, pprint->age(), SRS_PERF_MW_MIN_MSGS, SRS_CONSTS_RTMP_PULSE_TIMEOUT_US / 1000);
         }
         
         // sendout all messages.
@@ -1104,8 +1104,8 @@ int SrsHttpServer::hijack(SrsHttpMessage* request, ISrsHttpHandler** ph)
     int ret = ERROR_SUCCESS;
     
     // when handler not the root, we think the handler is ok.
-    ISrsHttpHandler* h = ph? *ph : NULL;
-    if (h->entry && h->entry->pattern != "/") {
+    ISrsHttpHandler* h = *ph? *ph : NULL;
+    if (h && h->entry && h->entry->pattern != "/") {
         return ret;
     }
     

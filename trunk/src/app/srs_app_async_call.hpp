@@ -21,49 +21,55 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-#ifndef SRS_CORE_AUTO_FREE_HPP
-#define SRS_CORE_AUTO_FREE_HPP
+#ifndef SRS_APP_ASYNC_CALL_HPP
+#define SRS_APP_ASYNC_CALL_HPP
 
 /*
-#include <srs_core_autofree.hpp>
+#include <srs_app_async_call.hpp>
 */
-
 #include <srs_core.hpp>
 
+#include <string>
+#include <vector>
+
+#include <srs_app_thread.hpp>
+
 /**
-* auto free the instance in the current scope, for instance, MyClass* ptr,
-* which is a ptr and this class will:
-*       1. free the ptr.
-*       2. set ptr to NULL.
-* Usage:
-*       MyClass* po = new MyClass();
-*       // ...... use po
-*       SrsAutoFree(MyClass, po);
+ * the async call for http hooks,
+ * for the http hooks will switch st-thread,
+ * so we must use isolate thread to avoid the thread corrupt,
+ * for example, when dvr call http hooks, the video receive thread got
+ * a video and pass it to the dvr again.
+ * futhurmore, the aync call never block the main worker thread.
+ */
+class ISrsDvrAsyncCall
+{
+public:
+    ISrsDvrAsyncCall();
+    virtual ~ISrsDvrAsyncCall();
+public:
+    virtual int call() = 0;
+    virtual std::string to_string() = 0;
+};
+
+/**
+* the async callback for dvr.
 */
-#define SrsAutoFree(className, instance) \
-    impl__SrsAutoFree<className> _auto_free_##instance(&instance)
-template<class T>
-class impl__SrsAutoFree
+class SrsDvrAsyncCallThread : public ISrsThreadHandler
 {
 private:
-    T** ptr;
+    SrsThread* pthread;
+    std::vector<ISrsDvrAsyncCall*> callbacks;
 public:
-    /**
-    * auto delete the ptr.
-    */
-    impl__SrsAutoFree(T** _ptr) {
-        ptr = _ptr;
-    }
-    
-    virtual ~impl__SrsAutoFree() {
-        if (ptr == NULL || *ptr == NULL) {
-            return;
-        }
-        
-        delete *ptr;
-        
-        *ptr = NULL;
-    }
+    SrsDvrAsyncCallThread();
+    virtual ~SrsDvrAsyncCallThread();
+public:
+    virtual int call(ISrsDvrAsyncCall* c);
+public:
+    virtual int start();
+    virtual void stop();
+    virtual int cycle();
 };
 
 #endif
+

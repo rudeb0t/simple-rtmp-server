@@ -28,6 +28,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <ifaddrs.h>
 #include <arpa/inet.h>
 
+#ifdef SRS_OSX
+#include <sys/sysctl.h>
+#endif
+#include <stdlib.h>
+#include <sys/time.h>
 using namespace std;
 
 #include <srs_kernel_log.hpp>
@@ -107,6 +112,116 @@ int srs_get_log_level(string level)
     }
 }
 
+string srs_path_build_stream(string template_path, string vhost, string app, string stream)
+{
+    std::string path = template_path;
+    
+    // variable [vhost]
+    path = srs_string_replace(path, "[vhost]", vhost);
+    // variable [app]
+    path = srs_string_replace(path, "[app]", app);
+    // variable [stream]
+    path = srs_string_replace(path, "[stream]", stream);
+    
+    return path;
+}
+
+string srs_path_build_timestamp(string template_path)
+{
+    std::string path = template_path;
+    
+    
+    // date and time substitude
+    // clock time
+    timeval tv;
+    if (gettimeofday(&tv, NULL) == -1) {
+        return path;
+    }
+    
+    // to calendar time
+    struct tm* tm;
+    if (_srs_config->get_utc_time()) {
+        if ((tm = gmtime(&tv.tv_sec)) == NULL) {
+            return path;
+        }
+    } else {
+        if ((tm = localtime(&tv.tv_sec)) == NULL) {
+            return path;
+        }
+    }
+    
+    // the buffer to format the date and time.
+    char buf[64];
+    
+    // [2006], replace with current year.
+    if (true) {
+        snprintf(buf, sizeof(buf), "%d", 1900 + tm->tm_year);
+        path = srs_string_replace(path, "[2006]", buf);
+    }
+    // [2006], replace with current year.
+    if (true) {
+        snprintf(buf, sizeof(buf), "%04d", 1900 + tm->tm_year);
+        path = srs_string_replace(path, "[2006]", buf);
+    }
+    // [01], replace this const to current month.
+    if (true) {
+        snprintf(buf, sizeof(buf), "%02d", 1 + tm->tm_mon);
+        path = srs_string_replace(path, "[01]", buf);
+    }
+    // [02], replace this const to current date.
+    if (true) {
+        snprintf(buf, sizeof(buf), "%02d", tm->tm_mday);
+        path = srs_string_replace(path, "[02]", buf);
+    }
+    // [15], replace this const to current hour.
+    if (true) {
+        snprintf(buf, sizeof(buf), "%02d", tm->tm_hour);
+        path = srs_string_replace(path, "[15]", buf);
+    }
+    // [04], repleace this const to current minute.
+    if (true) {
+        snprintf(buf, sizeof(buf), "%02d", tm->tm_min);
+        path = srs_string_replace(path, "[04]", buf);
+    }
+    // [05], repleace this const to current second.
+    if (true) {
+        snprintf(buf, sizeof(buf), "%02d", tm->tm_sec);
+        path = srs_string_replace(path, "[05]", buf);
+    }
+    // [999], repleace this const to current millisecond.
+    if (true) {
+        snprintf(buf, sizeof(buf), "%03d", (int)(tv.tv_usec / 1000));
+        path = srs_string_replace(path, "[999]", buf);
+    }
+    // [timestamp],replace this const to current UNIX timestamp in ms.
+    if (true) {
+        int64_t now_us = ((int64_t)tv.tv_sec) * 1000 * 1000 + (int64_t)tv.tv_usec;
+        snprintf(buf, sizeof(buf), "%"PRId64, now_us / 1000);
+        path = srs_string_replace(path, "[timestamp]", buf);
+    }
+    
+    return path;
+}
+
+void srs_parse_endpoint(string ip_port, string& ip, string& port)
+{
+    ip = "0.0.0.0";
+    port = ip_port;
+    
+    size_t pos = string::npos;
+    if ((pos = port.find(":")) != string::npos) {
+        ip = port.substr(0, pos);
+        port = port.substr(pos + 1);
+    }
+}
+
+void srs_parse_endpoint(string ip_port, string& ip, int& port)
+{
+    std::string the_port;
+    srs_parse_endpoint(ip_port, ip, the_port);
+    port = ::atoi(the_port.c_str());
+}
+
 static SrsRusage _srs_system_rusage;
 
 SrsRusage::SrsRusage()
@@ -144,7 +259,7 @@ SrsProcSelfStat::SrsProcSelfStat()
     
     pid = 0;
     memset(comm, 0, sizeof(comm));
-    state = 0;
+    state = '0';
     ppid = 0;
     pgrp = 0;
     session = 0;
@@ -222,6 +337,7 @@ SrsProcSystemStat* srs_get_system_proc_stat()
 
 bool get_proc_system_stat(SrsProcSystemStat& r)
 {
+#ifndef SRS_OSX
     FILE* f = fopen("/proc/stat", "r");
     if (f == NULL) {
         srs_warn("open system cpu stat failed, ignore");
@@ -251,6 +367,10 @@ bool get_proc_system_stat(SrsProcSystemStat& r)
     }
     
     fclose(f);
+#else
+    // TODO: FIXME: impelments it.
+    // Fuck all of you who use osx for a long time and never patch the osx features for srs.
+#endif
 
     r.ok = true;
     
@@ -259,6 +379,7 @@ bool get_proc_system_stat(SrsProcSystemStat& r)
 
 bool get_proc_self_stat(SrsProcSelfStat& r)
 {
+#ifndef SRS_OSX
     FILE* f = fopen("/proc/self/stat", "r");
     if (f == NULL) {
         srs_warn("open self cpu stat failed, ignore");
@@ -285,6 +406,10 @@ bool get_proc_self_stat(SrsProcSelfStat& r)
         &r.guest_time, &r.cguest_time);
     
     fclose(f);
+#else
+    // TODO: FIXME: impelments it.
+    // Fuck all of you who use osx for a long time and never patch the osx features for srs.
+#endif
     
     r.ok = true;
     
@@ -382,6 +507,7 @@ SrsDiskStat* srs_get_disk_stat()
 
 bool srs_get_disk_vmstat_stat(SrsDiskStat& r)
 {
+#ifndef SRS_OSX
     FILE* f = fopen("/proc/vmstat", "r");
     if (f == NULL) {
         srs_warn("open vmstat failed, ignore");
@@ -401,6 +527,10 @@ bool srs_get_disk_vmstat_stat(SrsDiskStat& r)
     }
     
     fclose(f);
+#else
+    // TODO: FIXME: impelments it.
+    // Fuck all of you who use osx for a long time and never patch the osx features for srs.
+#endif
     
     r.ok = true;
     
@@ -418,6 +548,7 @@ bool srs_get_disk_diskstats_stat(SrsDiskStat& r)
         return true;
     }
     
+#ifndef SRS_OSX
     FILE* f = fopen("/proc/diskstats", "r");
     if (f == NULL) {
         srs_warn("open vmstat failed, ignore");
@@ -482,6 +613,10 @@ bool srs_get_disk_diskstats_stat(SrsDiskStat& r)
     }
     
     fclose(f);
+#else
+    // TODO: FIXME: impelments it.
+    // Fuck all of you who use osx for a long time and never patch the osx features for srs.
+#endif
     
     r.ok = true;
     
@@ -572,13 +707,14 @@ SrsMemInfo* srs_get_meminfo()
 
 void srs_update_meminfo()
 {
+    SrsMemInfo& r = _srs_system_meminfo;
+    
+#ifndef SRS_OSX
     FILE* f = fopen("/proc/meminfo", "r");
     if (f == NULL) {
         srs_warn("open meminfo failed, ignore");
         return;
     }
-    
-    SrsMemInfo& r = _srs_system_meminfo;
     
     static char buf[1024];
     while (fgets(buf, sizeof(buf), f)) {
@@ -599,6 +735,10 @@ void srs_update_meminfo()
     }
     
     fclose(f);
+#else
+    // TODO: FIXME: impelments it.
+    // Fuck all of you who use osx for a long time and never patch the osx features for srs.
+#endif
     
     r.sample_time = srs_get_system_time_ms();
     r.MemActive = r.MemTotal - r.MemFree;
@@ -666,6 +806,7 @@ void srs_update_platform_info()
     
     r.srs_startup_time = srs_get_system_startup_time_ms();
     
+#ifndef SRS_OSX
     if (true) {
         FILE* f = fopen("/proc/uptime", "r");
         if (f == NULL) {
@@ -694,6 +835,43 @@ void srs_update_platform_info()
     
         fclose(f);
     }
+#else
+    // man 3 sysctl
+    if (true) {
+        struct timeval tv;
+        size_t len = sizeof(timeval);
+        
+        int mib[2];
+        mib[0] = CTL_KERN;
+        mib[1] = KERN_BOOTTIME;
+        if (sysctl(mib, 2, &tv, &len, NULL, 0) < 0) {
+            srs_warn("sysctl boottime failed, ignore");
+            return;
+        }
+        
+        time_t bsec = tv.tv_sec;
+        time_t csec = ::time(NULL);
+        r.os_uptime = difftime(csec, bsec);
+    }
+    
+    // man 3 sysctl
+    if (true) {
+        struct loadavg la;
+        size_t len = sizeof(loadavg);
+        
+        int mib[2];
+        mib[0] = CTL_VM;
+        mib[1] = VM_LOADAVG;
+        if (sysctl(mib, 2, &la, &len, NULL, 0) < 0) {
+            srs_warn("sysctl loadavg failed, ignore");
+            return;
+        }
+        
+        r.load_one_minutes = (double)la.ldavg[0] / la.fscale;
+        r.load_five_minutes = (double)la.ldavg[1] / la.fscale;
+        r.load_fifteen_minutes = (double)la.ldavg[2] / la.fscale;
+    }
+#endif
     
     r.ok = true;
 }
@@ -740,6 +918,7 @@ int srs_get_network_devices_count()
 
 void srs_update_network_devices()
 {
+#ifndef SRS_OSX
     if (true) {
         FILE* f = fopen("/proc/net/dev", "r");
         if (f == NULL) {
@@ -774,6 +953,10 @@ void srs_update_network_devices()
     
         fclose(f);
     }
+#else
+    // TODO: FIXME: impelments it.
+    // Fuck all of you who use osx for a long time and never patch the osx features for srs.
+#endif
 }
 
 SrsNetworkRtmpServer::SrsNetworkRtmpServer()
@@ -821,6 +1004,7 @@ void srs_update_rtmp_server(int nb_conn, SrsKbps* kbps)
     int nb_tcp_mem = 0;
     int nb_udp4 = 0;
     
+#ifndef SRS_OSX
     if (true) {
         FILE* f = fopen("/proc/net/sockstat", "r");
         if (f == NULL) {
@@ -850,9 +1034,21 @@ void srs_update_rtmp_server(int nb_conn, SrsKbps* kbps)
     
         fclose(f);
     }
+#else
+    // TODO: FIXME: impelments it.
+    // Fuck all of you who use osx for a long time and never patch the osx features for srs.
+    nb_socks = 0;
+    nb_tcp4_hashed = 0;
+    nb_tcp_orphans = 0;
+    nb_tcp_tws = 0;
+    nb_tcp_total = 0;
+    nb_tcp_mem = 0;
+    nb_udp4 = 0;
+#endif
     
     int nb_tcp_estab = 0;
     
+#ifndef SRS_OSX
     if (true) {
         FILE* f = fopen("/proc/net/snmp", "r");
         if (f == NULL) {
@@ -882,6 +1078,10 @@ void srs_update_rtmp_server(int nb_conn, SrsKbps* kbps)
     
         fclose(f);
     }
+#else
+    // TODO: FIXME: impelments it.
+    // Fuck all of you who use osx for a long time and never patch the osx features for srs.
+#endif
     
     // @see: https://github.com/shemminger/iproute2/blob/master/misc/ss.c
     // TODO: FIXME: ignore the slabstat, @see: get_slabstat()
@@ -1058,7 +1258,6 @@ void srs_api_dump_summaries(std::stringstream& ss)
     int64_t now = srs_get_system_time_ms();
     double srs_uptime = (now - p->srs_startup_time) / 100 / 10.0;
     
-    bool n_ok = false;
     int64_t n_sample_time = 0;
     int64_t nr_bytes = 0;
     int64_t ns_bytes = 0;
@@ -1072,7 +1271,6 @@ void srs_api_dump_summaries(std::stringstream& ss)
             continue;
         }
         
-        n_ok = true;
         nr_bytes += o.rbytes;
         ns_bytes += o.sbytes;
         n_sample_time = o.sample_time;
@@ -1080,53 +1278,53 @@ void srs_api_dump_summaries(std::stringstream& ss)
     
     // all data is ok?
     bool ok = (r->ok && u->ok && s->ok && c->ok 
-        && d->ok && m->ok && p->ok && n_ok && nrs->ok);
+        && d->ok && m->ok && p->ok && nrs->ok);
     
-    ss << __SRS_JOBJECT_START
-        << __SRS_JFIELD_ERROR(ERROR_SUCCESS) << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_ORG("data", __SRS_JOBJECT_START)
-            << __SRS_JFIELD_ORG("ok", (ok? "true":"false")) << __SRS_JFIELD_CONT
-            << __SRS_JFIELD_ORG("now_ms", now) << __SRS_JFIELD_CONT
-            << __SRS_JFIELD_ORG("self", __SRS_JOBJECT_START)
-                << __SRS_JFIELD_STR("version", RTMP_SIG_SRS_VERSION) << __SRS_JFIELD_CONT
-                << __SRS_JFIELD_ORG("pid", getpid()) << __SRS_JFIELD_CONT
-                << __SRS_JFIELD_ORG("ppid", u->ppid) << __SRS_JFIELD_CONT
-                << __SRS_JFIELD_STR("argv", _srs_config->argv()) << __SRS_JFIELD_CONT
-                << __SRS_JFIELD_STR("cwd", _srs_config->cwd()) << __SRS_JFIELD_CONT
-                << __SRS_JFIELD_ORG("mem_kbyte", r->r.ru_maxrss) << __SRS_JFIELD_CONT
-                << __SRS_JFIELD_ORG("mem_percent", self_mem_percent) << __SRS_JFIELD_CONT
-                << __SRS_JFIELD_ORG("cpu_percent", u->percent) << __SRS_JFIELD_CONT
-                << __SRS_JFIELD_ORG("srs_uptime", srs_uptime)
-            << __SRS_JOBJECT_END << __SRS_JFIELD_CONT
-            << __SRS_JFIELD_ORG("system", __SRS_JOBJECT_START)
-                << __SRS_JFIELD_ORG("cpu_percent", s->percent) << __SRS_JFIELD_CONT
-                << __SRS_JFIELD_ORG("disk_read_KBps", d->in_KBps) << __SRS_JFIELD_CONT
-                << __SRS_JFIELD_ORG("disk_write_KBps", d->out_KBps) << __SRS_JFIELD_CONT
-                << __SRS_JFIELD_ORG("disk_busy_percent", d->busy) << __SRS_JFIELD_CONT
-                << __SRS_JFIELD_ORG("mem_ram_kbyte", m->MemTotal) << __SRS_JFIELD_CONT
-                << __SRS_JFIELD_ORG("mem_ram_percent", m->percent_ram) << __SRS_JFIELD_CONT
-                << __SRS_JFIELD_ORG("mem_swap_kbyte", m->SwapTotal) << __SRS_JFIELD_CONT
-                << __SRS_JFIELD_ORG("mem_swap_percent", m->percent_swap) << __SRS_JFIELD_CONT
-                << __SRS_JFIELD_ORG("cpus", c->nb_processors) << __SRS_JFIELD_CONT
-                << __SRS_JFIELD_ORG("cpus_online", c->nb_processors_online) << __SRS_JFIELD_CONT
-                << __SRS_JFIELD_ORG("uptime", p->os_uptime) << __SRS_JFIELD_CONT
-                << __SRS_JFIELD_ORG("ilde_time", p->os_ilde_time) << __SRS_JFIELD_CONT
-                << __SRS_JFIELD_ORG("load_1m", p->load_one_minutes) << __SRS_JFIELD_CONT
-                << __SRS_JFIELD_ORG("load_5m", p->load_five_minutes) << __SRS_JFIELD_CONT
-                << __SRS_JFIELD_ORG("load_15m", p->load_fifteen_minutes) << __SRS_JFIELD_CONT
-                << __SRS_JFIELD_ORG("net_sample_time", n_sample_time) << __SRS_JFIELD_CONT
-                << __SRS_JFIELD_ORG("net_recv_bytes", nr_bytes) << __SRS_JFIELD_CONT
-                << __SRS_JFIELD_ORG("net_send_bytes", ns_bytes) << __SRS_JFIELD_CONT
-                << __SRS_JFIELD_ORG("srs_sample_time", nrs->sample_time) << __SRS_JFIELD_CONT
-                << __SRS_JFIELD_ORG("srs_recv_bytes", nrs->rbytes) << __SRS_JFIELD_CONT
-                << __SRS_JFIELD_ORG("srs_send_bytes", nrs->sbytes) << __SRS_JFIELD_CONT
-                << __SRS_JFIELD_ORG("conn_sys", nrs->nb_conn_sys) << __SRS_JFIELD_CONT
-                << __SRS_JFIELD_ORG("conn_sys_et", nrs->nb_conn_sys_et) << __SRS_JFIELD_CONT
-                << __SRS_JFIELD_ORG("conn_sys_tw", nrs->nb_conn_sys_tw) << __SRS_JFIELD_CONT
-                << __SRS_JFIELD_ORG("conn_sys_udp", nrs->nb_conn_sys_udp) << __SRS_JFIELD_CONT
-                << __SRS_JFIELD_ORG("conn_srs", nrs->nb_conn_srs)
-            << __SRS_JOBJECT_END
-        << __SRS_JOBJECT_END
-        << __SRS_JOBJECT_END;
+    ss << SRS_JOBJECT_START
+        << SRS_JFIELD_ERROR(ERROR_SUCCESS) << SRS_JFIELD_CONT
+        << SRS_JFIELD_ORG("data", SRS_JOBJECT_START)
+            << SRS_JFIELD_ORG("ok", (ok? "true":"false")) << SRS_JFIELD_CONT
+            << SRS_JFIELD_ORG("now_ms", now) << SRS_JFIELD_CONT
+            << SRS_JFIELD_ORG("self", SRS_JOBJECT_START)
+                << SRS_JFIELD_STR("version", RTMP_SIG_SRS_VERSION) << SRS_JFIELD_CONT
+                << SRS_JFIELD_ORG("pid", getpid()) << SRS_JFIELD_CONT
+                << SRS_JFIELD_ORG("ppid", u->ppid) << SRS_JFIELD_CONT
+                << SRS_JFIELD_STR("argv", _srs_config->argv()) << SRS_JFIELD_CONT
+                << SRS_JFIELD_STR("cwd", _srs_config->cwd()) << SRS_JFIELD_CONT
+                << SRS_JFIELD_ORG("mem_kbyte", r->r.ru_maxrss) << SRS_JFIELD_CONT
+                << SRS_JFIELD_ORG("mem_percent", self_mem_percent) << SRS_JFIELD_CONT
+                << SRS_JFIELD_ORG("cpu_percent", u->percent) << SRS_JFIELD_CONT
+                << SRS_JFIELD_ORG("srs_uptime", srs_uptime)
+            << SRS_JOBJECT_END << SRS_JFIELD_CONT
+            << SRS_JFIELD_ORG("system", SRS_JOBJECT_START)
+                << SRS_JFIELD_ORG("cpu_percent", s->percent) << SRS_JFIELD_CONT
+                << SRS_JFIELD_ORG("disk_read_KBps", d->in_KBps) << SRS_JFIELD_CONT
+                << SRS_JFIELD_ORG("disk_write_KBps", d->out_KBps) << SRS_JFIELD_CONT
+                << SRS_JFIELD_ORG("disk_busy_percent", d->busy) << SRS_JFIELD_CONT
+                << SRS_JFIELD_ORG("mem_ram_kbyte", m->MemTotal) << SRS_JFIELD_CONT
+                << SRS_JFIELD_ORG("mem_ram_percent", m->percent_ram) << SRS_JFIELD_CONT
+                << SRS_JFIELD_ORG("mem_swap_kbyte", m->SwapTotal) << SRS_JFIELD_CONT
+                << SRS_JFIELD_ORG("mem_swap_percent", m->percent_swap) << SRS_JFIELD_CONT
+                << SRS_JFIELD_ORG("cpus", c->nb_processors) << SRS_JFIELD_CONT
+                << SRS_JFIELD_ORG("cpus_online", c->nb_processors_online) << SRS_JFIELD_CONT
+                << SRS_JFIELD_ORG("uptime", p->os_uptime) << SRS_JFIELD_CONT
+                << SRS_JFIELD_ORG("ilde_time", p->os_ilde_time) << SRS_JFIELD_CONT
+                << SRS_JFIELD_ORG("load_1m", p->load_one_minutes) << SRS_JFIELD_CONT
+                << SRS_JFIELD_ORG("load_5m", p->load_five_minutes) << SRS_JFIELD_CONT
+                << SRS_JFIELD_ORG("load_15m", p->load_fifteen_minutes) << SRS_JFIELD_CONT
+                << SRS_JFIELD_ORG("net_sample_time", n_sample_time) << SRS_JFIELD_CONT
+                << SRS_JFIELD_ORG("net_recv_bytes", nr_bytes) << SRS_JFIELD_CONT
+                << SRS_JFIELD_ORG("net_send_bytes", ns_bytes) << SRS_JFIELD_CONT
+                << SRS_JFIELD_ORG("srs_sample_time", nrs->sample_time) << SRS_JFIELD_CONT
+                << SRS_JFIELD_ORG("srs_recv_bytes", nrs->rbytes) << SRS_JFIELD_CONT
+                << SRS_JFIELD_ORG("srs_send_bytes", nrs->sbytes) << SRS_JFIELD_CONT
+                << SRS_JFIELD_ORG("conn_sys", nrs->nb_conn_sys) << SRS_JFIELD_CONT
+                << SRS_JFIELD_ORG("conn_sys_et", nrs->nb_conn_sys_et) << SRS_JFIELD_CONT
+                << SRS_JFIELD_ORG("conn_sys_tw", nrs->nb_conn_sys_tw) << SRS_JFIELD_CONT
+                << SRS_JFIELD_ORG("conn_sys_udp", nrs->nb_conn_sys_udp) << SRS_JFIELD_CONT
+                << SRS_JFIELD_ORG("conn_srs", nrs->nb_conn_srs)
+            << SRS_JOBJECT_END
+        << SRS_JOBJECT_END
+        << SRS_JOBJECT_END;
 }
 

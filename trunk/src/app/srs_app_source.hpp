@@ -235,7 +235,7 @@ public:
     virtual int get_time();
     /**
     * enqueue an shared ptr message.
-    * @param __msg, directly ptr, copy it if need to save it.
+    * @param shared_msg, directly ptr, copy it if need to save it.
     * @param whether atc, donot use jitter correct if true.
     * @param tba timebase of audio.
     *         used to calc the audio time delta if time-jitter detected.
@@ -243,7 +243,7 @@ public:
     *        used to calc the video time delta if time-jitter detected.
     * @param ag the algorithm of time jitter.
     */
-    virtual int enqueue(SrsSharedPtrMessage* __msg, bool atc, int tba, int tbv, SrsRtmpJitterAlgorithm ag);
+    virtual int enqueue(SrsSharedPtrMessage* shared_msg, bool atc, int tba, int tbv, SrsRtmpJitterAlgorithm ag);
     /**
     * get packets in consumer queue.
     * @param msgs the msgs array to dump packets to send.
@@ -317,9 +317,9 @@ public:
     * only for h264 codec
     * 1. cache the gop when got h264 video packet.
     * 2. clear gop when got keyframe.
-    * @param __msg, directly ptr, copy it if need to save it.
+    * @param shared_msg, directly ptr, copy it if need to save it.
     */
-    virtual int cache(SrsSharedPtrMessage* __msg);
+    virtual int cache(SrsSharedPtrMessage* shared_msg);
     /**
     * clear the gop cache.
     */
@@ -369,6 +369,23 @@ public:
 };
 
 /**
+ * the mix queue to correct the timestamp for mix_correct algorithm.
+ */
+class SrsMixQueue
+{
+private:
+    u_int32_t nb_videos;
+    std::multimap<int64_t, SrsSharedPtrMessage*> msgs;
+public:
+    SrsMixQueue();
+    virtual ~SrsMixQueue();
+public:
+    virtual void clear();
+    virtual void push(SrsSharedPtrMessage* msg);
+    virtual SrsSharedPtrMessage* pop();
+};
+
+/**
 * live streaming source.
 */
 class SrsSource : public ISrsReloadHandler
@@ -407,6 +424,9 @@ private:
     std::vector<SrsConsumer*> consumers;
     // the time jitter algorithm for vhost.
     SrsRtmpJitterAlgorithm jitter_algorithm;
+    // whether use interlaced/mixed algorithm to correct timestamp.
+    bool mix_correct;
+    SrsMixQueue* mix_queue;
     // hls handler.
 #ifdef SRS_AUTO_HLS
     SrsHls* hls;
@@ -474,6 +494,7 @@ public:
     virtual int on_reload_vhost_gop_cache(std::string vhost);
     virtual int on_reload_vhost_queue_length(std::string vhost);
     virtual int on_reload_vhost_time_jitter(std::string vhost);
+    virtual int on_reload_vhost_mix_correct(std::string vhost);
     virtual int on_reload_vhost_forward(std::string vhost);
     virtual int on_reload_vhost_hls(std::string vhost);
     virtual int on_reload_vhost_hds(std::string vhost);
@@ -495,8 +516,17 @@ public:
 public:
     virtual bool can_publish();
     virtual int on_meta_data(SrsCommonMessage* msg, SrsOnMetaDataPacket* metadata);
+public:
     virtual int on_audio(SrsCommonMessage* audio);
+private:
+    virtual int on_audio_imp(SrsSharedPtrMessage* audio);
+public:
     virtual int on_video(SrsCommonMessage* video);
+private:
+    virtual int on_video_imp(SrsSharedPtrMessage* video);
+private:
+    virtual int do_mix_correct(SrsSharedPtrMessage* msg);
+public:
     virtual int on_aggregate(SrsCommonMessage* msg);
     /**
     * the pre-publish is we are very sure we are

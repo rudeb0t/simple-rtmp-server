@@ -43,11 +43,16 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define SRS_CONF_DEFAULT_LOG_TANK_CONSOLE "console"
 #define SRS_CONF_DEFAULT_COFNIG_FILE "conf/srs.conf"
 #define SRS_CONF_DEFAULT_FF_LOG_DIR "./objs"
+#define SRS_CONF_DEFAULT_UTC_TIME false
 
 #define SRS_CONF_DEFAULT_MAX_CONNECTIONS 1000
 #define SRS_CONF_DEFAULT_HLS_PATH "./objs/nginx/html"
+#define SRS_CONF_DEFAULT_HLS_M3U8_FILE "[app]/[stream].m3u8"
+#define SRS_CONF_DEFAULT_HLS_TS_FILE "[app]/[stream]-[seq].ts"
+#define SRS_CONF_DEFAULT_HLS_TS_FLOOR false
 #define SRS_CONF_DEFAULT_HLS_FRAGMENT 10
 #define SRS_CONF_DEFAULT_HLS_TD_RATIO 1.5
+#define SRS_CONF_DEFAULT_HLS_AOF_RATIO 2.0
 #define SRS_CONF_DEFAULT_HLS_WINDOW 60
 #define SRS_CONF_DEFAULT_HLS_ON_ERROR_IGNORE "ignore"
 #define SRS_CONF_DEFAULT_HLS_ON_ERROR_DISCONNECT "disconnect"
@@ -57,13 +62,18 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define SRS_CONF_DEFAULT_HLS_MOUNT "[vhost]/[app]/[stream].m3u8"
 #define SRS_CONF_DEFAULT_HLS_ACODEC "aac"
 #define SRS_CONF_DEFAULT_HLS_VCODEC "h264"
-#define SRS_CONF_DEFAULT_DVR_PATH "./objs/nginx/html"
+#define SRS_CONF_DEFAULT_HLS_CLEANUP true
+#define SRS_CONF_DEFAULT_HLS_WAIT_KEYFRAME true
+#define SRS_CONF_DEFAULT_HLS_NB_NOTIFY 64
+#define SRS_CONF_DEFAULT_DVR_PATH "./objs/nginx/html/[app]/[stream].[timestamp].flv"
 #define SRS_CONF_DEFAULT_DVR_PLAN_SESSION "session"
 #define SRS_CONF_DEFAULT_DVR_PLAN_SEGMENT "segment"
 #define SRS_CONF_DEFAULT_DVR_PLAN_APPEND "append"
 #define SRS_CONF_DEFAULT_DVR_PLAN SRS_CONF_DEFAULT_DVR_PLAN_SESSION
 #define SRS_CONF_DEFAULT_DVR_DURATION 30
 #define SRS_CONF_DEFAULT_TIME_JITTER "full"
+#define SRS_CONF_DEFAULT_ATC_AUTO true
+#define SRS_CONF_DEFAULT_MIX_CORRECT false
 // in seconds, the paused queue length.
 #define SRS_CONF_DEFAULT_PAUSED_LENGTH 10
 // the interval in seconds for bandwidth check
@@ -76,8 +86,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define SRS_CONF_DEFAULT_HTTP_DIR SRS_CONF_DEFAULT_HLS_PATH
 #define SRS_CONF_DEFAULT_HTTP_AUDIO_FAST_CACHE 0
 
-#define SRS_CONF_DEFAULT_HTTP_STREAM_PORT 8080
-#define SRS_CONF_DEFAULT_HTTP_API_PORT 1985
+#define SRS_CONF_DEFAULT_HTTP_STREAM_PORT "8080"
+#define SRS_CONF_DEFAULT_HTTP_API_PORT "1985"
 #define SRS_CONF_DEFAULT_HTTP_API_CROSSDOMAIN true
 
 #define SRS_CONF_DEFAULT_HTTP_HEAETBEAT_ENABLED false
@@ -100,6 +110,10 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #define SRS_CONF_DEFAULT_TRANSCODE_IFORMAT "flv"
 #define SRS_CONF_DEFAULT_TRANSCODE_OFORMAT "flv"
+
+#define SRS_CONF_DEFAULT_EDGE_MODE false
+#define SRS_CONF_DEFAULT_EDGE_TOKEN_TRAVERSE false
+#define SRS_CONF_DEFAULT_EDGE_TRANSFORM_VHOST "[vhost]"
 
 // hds default value
 #define SRS_CONF_DEFAULT_HDS_PATH       "./objs/nginx/html"
@@ -410,7 +424,7 @@ public:
     * user can specifies multiple listen ports,
     * each args of directive is a listen port.
     */
-    virtual std::vector<std::string>        get_listen();
+    virtual std::vector<std::string>        get_listens();
     /**
     * get the pid file path.
     * the pid file is used to save the pid of SRS,
@@ -426,6 +440,10 @@ public:
     * every this interval in ms.
     */
     virtual int                 get_pithy_print_ms();
+    /**
+     * whether use utc-time to format the time.
+     */
+    virtual bool                get_utc_time();
 // stream_caster section
 public:
     /**
@@ -515,6 +533,11 @@ public:
     * @remark, default full.
     */
     virtual int                 get_time_jitter(std::string vhost);
+    /**
+     * whether use mix correct algorithm to ensure the timestamp
+     * monotonically increase.
+     */
+    virtual bool                get_mix_correct(std::string vhost);
     /**
     * get the cache queue length, in seconds.
     * when exceed the queue length, drop packet util I frame.
@@ -623,10 +646,20 @@ public:
     */
     virtual SrsConfDirective*   get_vhost_on_stop(std::string vhost);
     /**
-    * get the on_dvr callbacks of vhost.
-    * @return the on_dvr callback directive, the args is the url to callback.
-    */
+     * get the on_dvr callbacks of vhost.
+     * @return the on_dvr callback directive, the args is the url to callback.
+     */
     virtual SrsConfDirective*   get_vhost_on_dvr(std::string vhost);
+    /**
+     * get the on_hls callbacks of vhost.
+     * @return the on_hls callback directive, the args is the url to callback.
+     */
+    virtual SrsConfDirective*   get_vhost_on_hls(std::string vhost);
+    /**
+     * get the on_hls_notify callbacks of vhost.
+     * @return the on_hls_notify callback directive, the args is the url to callback.
+     */
+    virtual SrsConfDirective*   get_vhost_on_hls_notify(std::string vhost);
 // bwct(bandwidth check tool) section
 public:
     /**
@@ -678,6 +711,11 @@ public:
     * all clients connected to edge must be tranverse to origin to verify.
     */
     virtual bool                get_vhost_edge_token_traverse(std::string vhost);
+    /**
+     * get the transformed vhost for edge,
+     * @see https://github.com/winlinvip/simple-rtmp-server/issues/372
+     */
+    virtual std::string         get_vhost_edge_transform_vhost(std::string vhost);
 // vhost security section
 public:
     /**
@@ -870,19 +908,33 @@ public:
     */
     virtual std::string         get_hls_entry_prefix(std::string vhost);
     /**
-    * get the HLS ts/m3u8 file store path.
-    */
+     * get the HLS ts/m3u8 file store path.
+     */
     virtual std::string         get_hls_path(std::string vhost);
     /**
+     * get the HLS m3u8 file path template.
+     */
+    virtual std::string         get_hls_m3u8_file(std::string vhost);
+    /**
+     * get the HLS ts file path template.
+     */
+    virtual std::string         get_hls_ts_file(std::string vhost);
+    /**
+     * whether enable the floor(timestamp/hls_fragment) for variable timestamp.
+     */
+    virtual bool                get_hls_ts_floor(std::string vhost);
+    /**
     * get the hls fragment time, in seconds.
-    * a fragment is a ts file.
     */
     virtual double              get_hls_fragment(std::string vhost);
     /**
     * get the hls td(target duration) ratio.
-    * a fragment is a ts file.
     */
     virtual double              get_hls_td_ratio(std::string vhost);
+    /**
+     * get the hls aof(audio overflow) ratio.
+     */
+    virtual double              get_hls_aof_ratio(std::string vhost);
     /**
     * get the hls window time, in seconds.
     * a window is a set of ts, the ts collection in m3u8.
@@ -912,8 +964,20 @@ public:
     * get the HLS default video codec.
     */
     virtual std::string         get_hls_vcodec(std::string vhost);
-
-    // hds section
+    /**
+     * whether cleanup the old ts files.
+     */
+    virtual bool                get_hls_cleanup(std::string vhost);
+    /**
+     * whether reap the ts when got keyframe.
+     */
+    virtual bool                get_hls_wait_keyframe(std::string vhost);
+    /**
+     * get the size of bytes to read from cdn network, for the on_hls_notify callback,
+     * that is, to read max bytes of the bytes from the callback, or timeout or error.
+     */
+    virtual int                 get_vhost_hls_nb_notify(std::string vhost);
+// hds section
 private:
     /**
     * get the hds directive of vhost.
@@ -987,7 +1051,7 @@ public:
     /**
     * get the http api listen port.
     */
-    virtual int                 get_http_api_listen();
+    virtual std::string         get_http_api_listen();
     /**
     * whether enable crossdomain for http api.
     */
@@ -1010,7 +1074,7 @@ public:
     /**
     * get the http stream listen port.
     */
-    virtual int                 get_http_stream_listen();
+    virtual std::string         get_http_stream_listen();
     /**
     * get the http stream root dir.
     */

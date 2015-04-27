@@ -171,7 +171,7 @@ int do_proxy(srs_flv_t flv, srs_rtmp_t ortmp, int64_t re, int32_t* pstarttime, u
             return ret;
         }
             
-        if (*pstarttime < 0) {
+        if (*pstarttime < 0 && srs_utils_flv_tag_is_av(type)) {
             *pstarttime = *ptimestamp;
         }
         
@@ -257,7 +257,7 @@ void re_update(int64_t re, int32_t starttime, u_int32_t time)
     int64_t now = srs_utils_time_ms();
     int64_t diff = time - starttime - (now -re);
     if (diff > RE_PULSE_MS) {
-        usleep(diff * 1000);
+        usleep((useconds_t)(diff * 1000));
     }
 }
 void re_cleanup(int64_t re, int32_t starttime, u_int32_t time)
@@ -269,6 +269,6 @@ void re_cleanup(int64_t re, int32_t starttime, u_int32_t time)
     if (diff > 0) {
         srs_human_trace("re_cleanup, diff=%d, start=%d, last=%d ms", 
             (int)diff, starttime, time);
-        usleep(diff * 1000);
+        usleep((useconds_t)(diff * 1000));
     }
 }

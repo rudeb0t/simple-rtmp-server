@@ -198,7 +198,7 @@ About all PRIMARY, AUTHORS and CONTRIBUTORS, read
 [AUTHORS.txt](https://github.com/winlinvip/simple-rtmp-server/blob/develop/AUTHORS.txt).
 
 A big THANK YOU goes to:
-* [chnvideo](chnvideo.com) co-founders([wiseyoung](mailto:wiseyoung@chnvideo.com), [trueice](mailto:trueice@chnvideo.com), [leijian](mailto:leijian@chnvideo.com)) for [big supports](https://github.com/winlinvip/simple-rtmp-server/wiki/v1_CN_Product#bigthanks).
+* All friends of SRS for [big supports](https://github.com/winlinvip/simple-rtmp-server/wiki/v1_CN_Product#bigthanks).
 * Genes amd Mabbott for creating [st](https://github.com/winlinvip/state-threads)([state-threads](http://sourceforge.net/projects/state-threads/)).
 * Michael Talyanksy for introducing us to use st.
 * Roman Arutyunyan for creating [nginx-rtmp](https://github.com/arut/nginx-rtmp-module) for SRS to refer to. 
@@ -566,6 +566,21 @@ Supported operating systems and hardware:
 
 ### SRS 2.0 history
 
+* v2.0, 2015-04-20, support ingest hls live stream to RTMP.
+* v2.0, 2015-04-15, for [#383](https://github.com/winlinvip/simple-rtmp-server/issues/383), support mix_correct algorithm. 2.0.161.
+* v2.0, 2015-04-13, for [#381](https://github.com/winlinvip/simple-rtmp-server/issues/381), support reap hls/ts by gop or not. 2.0.160.
+* v2.0, 2015-04-10, enhanced on_hls_notify, support HTTP GET when reap ts.
+* v2.0, 2015-04-10, refine the hls deviation for floor algorithm.
+* v2.0, 2015-04-08, for [#375](https://github.com/winlinvip/simple-rtmp-server/issues/375), fix hls bug, keep cc continous between ts files. 2.0.159.
+* v2.0, 2015-04-04, for [#304](https://github.com/winlinvip/simple-rtmp-server/issues/304), rewrite annexb mux for ts, refer to apple sample. 2.0.157.
+* v2.0, 2015-04-03, enhanced avc decode, parse the sps get width+height. 2.0.156.
+* v2.0, 2015-04-03, for [#372](https://github.com/winlinvip/simple-rtmp-server/issues/372), support transform vhost of edge 2.0.155.
+* v2.0, 2015-03-30, for [#366](https://github.com/winlinvip/simple-rtmp-server/issues/366), config hls to disable cleanup of ts. 2.0.154.
+* v2.0, 2015-03-31, support server cycle handler. 2.0.153.
+* v2.0, 2015-03-31, support on_hls for http hooks. 2.0.152.
+* v2.0, 2015-03-31, enhanced hls, support deviation for duration. 2.0.151.
+* v2.0, 2015-03-30, for [#351](https://github.com/winlinvip/simple-rtmp-server/issues/351), support config the m3u8/ts path for hls. 2.0.149.
+* v2.0, 2015-03-17, for [#155](https://github.com/winlinvip/simple-rtmp-server/issues/155), osx(darwin) support demo with nginx and ffmpeg. 2.0.143.
 * v2.0, 2015-03-15, start [2.0release branch](https://github.com/winlinvip/simple-rtmp-server/tree/2.0release), 80773 lines.
 * v2.0, 2015-03-14, fix [#324](https://github.com/winlinvip/simple-rtmp-server/issues/324), support hstrs(http stream trigger rtmp source) edge mode. 2.0.140.
 * v2.0, 2015-03-14, for [#324](https://github.com/winlinvip/simple-rtmp-server/issues/324), support hstrs(http stream trigger rtmp source) origin mode. 2.0.139.

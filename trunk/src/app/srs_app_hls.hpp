@@ -39,6 +39,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include <srs_kernel_codec.hpp>
 #include <srs_kernel_file.hpp>
+#include <srs_app_async_call.hpp>
 
 class SrsSharedPtrMessage;
 class SrsCodecSample;
@@ -55,6 +56,7 @@ class SrsTsAacJitter;
 class SrsTsCache;
 class SrsHlsSegment;
 class SrsTsCache;
+class SrsTsContext;
 
 /**
 * the handler for hls event.
@@ -144,7 +146,7 @@ public:
     // whether current segement is sequence header.
     bool is_sequence_header;
 public:
-    SrsHlsSegment(bool write_cache, bool write_file, SrsCodecAudio ac, SrsCodecVideo vc);
+    SrsHlsSegment(SrsTsContext* c, bool write_cache, bool write_file, SrsCodecAudio ac, SrsCodecVideo vc);
     virtual ~SrsHlsSegment();
 public:
     /**
@@ -152,6 +154,40 @@ public:
     * @current_frame_dts the dts of frame, in tbn of ts.
     */
     virtual void update_duration(int64_t current_frame_dts);
+};
+
+/**
+ * the hls async call: on_hls
+ */
+class SrsDvrAsyncCallOnHls : public ISrsDvrAsyncCall
+{
+private:
+    std::string path;
+    int seq_no;
+    SrsRequest* req;
+    double duration;
+public:
+    SrsDvrAsyncCallOnHls(SrsRequest* r, std::string p, int s, double d);
+    virtual ~SrsDvrAsyncCallOnHls();
+public:
+    virtual int call();
+    virtual std::string to_string();
+};
+
+/**
+ * the hls async call: on_hls_notify
+ */
+class SrsDvrAsyncCallOnHlsNotify : public ISrsDvrAsyncCall
+{
+private:
+    std::string ts_url;
+    SrsRequest* req;
+public:
+    SrsDvrAsyncCallOnHlsNotify(SrsRequest* r, std::string u);
+    virtual ~SrsDvrAsyncCallOnHlsNotify();
+public:
+    virtual int call();
+    virtual std::string to_string();
 };
 
 /**
@@ -169,8 +205,24 @@ private:
 private:
     std::string hls_entry_prefix;
     std::string hls_path;
-    int hls_fragment;
-    int hls_window;
+    std::string hls_ts_file;
+    bool hls_cleanup;
+    bool hls_wait_keyframe;
+    std::string m3u8_dir;
+    double hls_aof_ratio;
+    double hls_fragment;
+    double hls_window;
+    SrsDvrAsyncCallThread* async;
+private:
+    // whether use floor algorithm for timestamp.
+    bool hls_ts_floor;
+    // the deviation in piece to adjust the fragment to be more
+    // bigger or smaller.
+    int deviation_ts;
+    // the previous reap floor timestamp,
+    // used to detect the dup or jmp or ts.
+    int64_t accept_floor_ts;
+    int64_t previous_floor_ts;
 private:
     int _sequence_no;
     int target_duration;
@@ -195,11 +247,19 @@ private:
     * @see https://github.com/winlinvip/simple-rtmp-server/issues/301
     */
     SrsCodecAudio acodec;
+    /**
+     * the ts context, to keep cc continous between ts.
+     * @see https://github.com/winlinvip/simple-rtmp-server/issues/375
+     */
+    SrsTsContext* context;
 public:
     SrsHlsMuxer();
     virtual ~SrsHlsMuxer();
 public:
     virtual int sequence_no();
+    virtual std::string ts_url();
+    virtual double duration();
+    virtual int deviation();
 public:
     /**
     * initialize the hls muxer.
@@ -208,7 +268,10 @@ public:
     /**
     * when publish, update the config for muxer.
     */
-    virtual int update_config(SrsRequest* r, std::string entry_prefix, std::string path, int fragment, int window);
+    virtual int update_config(SrsRequest* r, std::string entry_prefix,
+        std::string path, std::string m3u8_file, std::string ts_file,
+        double fragment, double window, bool ts_floor, double aof_ratio,
+        bool cleanup, bool wait_keyframe);
     /**
     * open a new segment(a new ts file),
     * @param segment_start_dts use to calc the segment duration,
@@ -221,6 +284,10 @@ public:
     * that is whether the current segment duration>=(the segment in config)
     */
     virtual bool is_segment_overflow();
+    /**
+     * whether wait keyframe to reap the ts.
+     */
+    virtual bool wait_keyframe();
     /**
     * whether segment absolutely overflow, for pure audio to reap segment,
     * that is whether the current segment duration>=2*(the segment in config)
@@ -239,7 +306,6 @@ public:
 private:
     virtual int refresh_m3u8();
     virtual int _refresh_m3u8(std::string m3u8_file);
-    virtual int create_dir();
 };
 
 /**
@@ -353,14 +419,14 @@ public:
     virtual int on_meta_data(SrsAmf0Object* metadata);
     /**
     * mux the audio packets to ts.
-    * @param __audio, directly ptr, copy it if need to save it.
+    * @param shared_audio, directly ptr, copy it if need to save it.
     */
-    virtual int on_audio(SrsSharedPtrMessage* __audio);
+    virtual int on_audio(SrsSharedPtrMessage* shared_audio);
     /**
     * mux the video packets to ts.
-    * @param __video, directly ptr, copy it if need to save it.
+    * @param shared_video, directly ptr, copy it if need to save it.
     */
-    virtual int on_video(SrsSharedPtrMessage* __video);
+    virtual int on_video(SrsSharedPtrMessage* shared_video);
 private:
     virtual void hls_show_mux_log();
 };

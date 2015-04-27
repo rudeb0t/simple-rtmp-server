@@ -131,20 +131,20 @@ extern void srs_rtmp_destroy(srs_rtmp_t rtmp);
 */
 /**
 * srs_rtmp_handshake equals to invoke:
-*       __srs_rtmp_dns_resolve()
-*       __srs_rtmp_connect_server()
-*       __srs_rtmp_do_simple_handshake()
+*       srs_rtmp_dns_resolve()
+*       srs_rtmp_connect_server()
+*       srs_rtmp_do_simple_handshake()
 * user can use these functions if needed.
 */
 extern int srs_rtmp_handshake(srs_rtmp_t rtmp);
 // parse uri, create socket, resolve host
-extern int __srs_rtmp_dns_resolve(srs_rtmp_t rtmp);
+extern int srs_rtmp_dns_resolve(srs_rtmp_t rtmp);
 // connect socket to server
-extern int __srs_rtmp_connect_server(srs_rtmp_t rtmp);
+extern int srs_rtmp_connect_server(srs_rtmp_t rtmp);
 // do simple handshake over socket.
-extern int __srs_rtmp_do_simple_handshake(srs_rtmp_t rtmp);
+extern int srs_rtmp_do_simple_handshake(srs_rtmp_t rtmp);
 // do complex handshake over socket.
-extern int __srs_rtmp_do_complex_handshake(srs_rtmp_t rtmp);
+extern int srs_rtmp_do_complex_handshake(srs_rtmp_t rtmp);
 
 /**
 * set the args of connect packet for rtmp.
@@ -655,6 +655,15 @@ extern int srs_utils_parse_timestamp(
     u_int32_t time, char type, char* data, int size,
     u_int32_t* ppts
 );
+    
+/**
+ * whether the flv tag specified by param type is ok.
+ * @return true when tag is video/audio/script-data; otherwise, false.
+ */
+extern srs_bool srs_utils_flv_tag_is_ok(char type);
+extern srs_bool srs_utils_flv_tag_is_audio(char type);
+extern srs_bool srs_utils_flv_tag_is_video(char type);
+extern srs_bool srs_utils_flv_tag_is_av(char type);
 
 /**
 * get the CodecID of video tag.

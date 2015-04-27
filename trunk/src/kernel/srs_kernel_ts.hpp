@@ -47,6 +47,7 @@ class SrsTsAdaptationField;
 class SrsTsPayload;
 class SrsTsMessage;
 class SrsTsPacket;
+class SrsTsContext;
 
 // Transport Stream packets are 188 bytes in length.
 #define SRS_TS_PACKET_SIZE          188
@@ -171,6 +172,7 @@ struct SrsTsChannel
     SrsTsPidApply apply;
     SrsTsStream stream;
     SrsTsMessage* msg;
+    SrsTsContext* context;
     // for encoder.
     u_int8_t continuity_counter;
 
@@ -258,7 +260,7 @@ public:
     // generally, the video IDR(I frame, the keyframe of h.264) carray the pcr info.
     bool write_pcr;
     // whether got discontinuity ts, for example, sequence header changed.
-    bool discontinuity;
+    bool is_discontinuity;
 public:
     // the timestamp in 90khz
     int64_t dts;
@@ -308,6 +310,13 @@ public:
     * @return the stream number for audio/video; otherwise, -1.
     */
     virtual int stream_number();
+public:
+    /**
+     * detach the ts message,
+     * for user maybe need to parse the message by queue.
+     * @remark we always use the payload of original message.
+     */
+    virtual SrsTsMessage* detach();
 };
 
 /**
@@ -335,6 +344,7 @@ class SrsTsContext
 // codec
 private:
     std::map<int, SrsTsChannel*> pids;
+    bool pure_audio;
 // encoder
 private:
     // when any codec changed, write the PAT/PMT.
@@ -343,6 +353,19 @@ private:
 public:
     SrsTsContext();
     virtual ~SrsTsContext();
+public:
+    /**
+     * whether the hls stream is pure audio stream.
+     */
+    virtual bool is_pure_audio();
+    /**
+     * when PMT table parsed, we know some info about stream.
+     */
+    virtual void on_pmt_parsed();
+    /**
+     * reset the context for a new ts segment start.
+     */
+    virtual void reset();
 // codec
 public:
     /**
@@ -1340,7 +1363,7 @@ public:
     /**
     * reverved value, must be '1'
     */
-    int8_t const1_value; //2bits
+    int8_t const3_value; //2bits
     /**
     * This 5-bit field is the version number of the whole Program Association Table. The version number
     * shall be incremented by 1 modulo 32 whenever the definition of the Program Association Table changes. When the
@@ -1533,7 +1556,7 @@ private:
     SrsFileWriter* writer;
     std::string path;
 public:
-    SrsTSMuxer(SrsFileWriter* w, SrsCodecAudio ac, SrsCodecVideo vc);
+    SrsTSMuxer(SrsFileWriter* w, SrsTsContext* c, SrsCodecAudio ac, SrsCodecVideo vc);
     virtual ~SrsTSMuxer();
 public:
     /**
@@ -1608,6 +1631,7 @@ private:
     SrsCodecSample* sample;
     SrsTsCache* cache;
     SrsTSMuxer* muxer;
+    SrsTsContext* context;
 public:
     SrsTsEncoder();
     virtual ~SrsTsEncoder();

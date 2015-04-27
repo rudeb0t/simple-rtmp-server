@@ -36,11 +36,17 @@ using namespace std;
 #include <srs_app_dvr.hpp>
 #include <srs_app_http_client.hpp>
 #include <srs_core_autofree.hpp>
+#include <srs_app_config.hpp>
+#include <srs_kernel_utility.hpp>
 
-#define SRS_HTTP_RESPONSE_OK    __SRS_XSTR(ERROR_SUCCESS)
+#define SRS_HTTP_RESPONSE_OK    SRS_XSTR(ERROR_SUCCESS)
 
 #define SRS_HTTP_HEADER_BUFFER        1024
+#define SRS_HTTP_READ_BUFFER    4096
 #define SRS_HTTP_BODY_BUFFER        32 * 1024
+
+// the timeout for hls notify, in us.
+#define SRS_HLS_NOTIFY_TIMEOUT_US (int64_t)(10*1000*1000LL)
 
 SrsHttpHooks::SrsHttpHooks()
 {
@@ -50,20 +56,22 @@ SrsHttpHooks::~SrsHttpHooks()
 {
 }
 
-int SrsHttpHooks::on_connect(string url, int client_id, string ip, SrsRequest* req)
+int SrsHttpHooks::on_connect(string url, SrsRequest* req)
 {
     int ret = ERROR_SUCCESS;
     
+    int client_id = _srs_context->get_id();
+    
     std::stringstream ss;
-    ss << __SRS_JOBJECT_START
-        << __SRS_JFIELD_STR("action", "on_connect") << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_ORG("client_id", client_id) << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_STR("ip", ip) << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_STR("vhost", req->vhost) << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_STR("app", req->app) << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_STR("tcUrl", req->tcUrl) << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_STR("pageUrl", req->pageUrl)
-        << __SRS_JOBJECT_END;
+    ss << SRS_JOBJECT_START
+        << SRS_JFIELD_STR("action", "on_connect") << SRS_JFIELD_CONT
+        << SRS_JFIELD_ORG("client_id", client_id) << SRS_JFIELD_CONT
+        << SRS_JFIELD_STR("ip", req->ip) << SRS_JFIELD_CONT
+        << SRS_JFIELD_STR("vhost", req->vhost) << SRS_JFIELD_CONT
+        << SRS_JFIELD_STR("app", req->app) << SRS_JFIELD_CONT
+        << SRS_JFIELD_STR("tcUrl", req->tcUrl) << SRS_JFIELD_CONT
+        << SRS_JFIELD_STR("pageUrl", req->pageUrl)
+        << SRS_JOBJECT_END;
         
     std::string data = ss.str();
     std::string res;
@@ -82,20 +90,22 @@ int SrsHttpHooks::on_connect(string url, int client_id, string ip, SrsRequest* r
     return ret;
 }
 
-void SrsHttpHooks::on_close(string url, int client_id, string ip, SrsRequest* req, int64_t send_bytes, int64_t recv_bytes)
+void SrsHttpHooks::on_close(string url, SrsRequest* req, int64_t send_bytes, int64_t recv_bytes)
 {
     int ret = ERROR_SUCCESS;
     
+    int client_id = _srs_context->get_id();
+    
     std::stringstream ss;
-    ss << __SRS_JOBJECT_START
-        << __SRS_JFIELD_STR("action", "on_close") << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_ORG("client_id", client_id) << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_STR("ip", ip) << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_STR("vhost", req->vhost) << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_ORG("send_bytes", send_bytes) << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_ORG("recv_bytes", recv_bytes) << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_STR("app", req->app)
-        << __SRS_JOBJECT_END;
+    ss << SRS_JOBJECT_START
+        << SRS_JFIELD_STR("action", "on_close") << SRS_JFIELD_CONT
+        << SRS_JFIELD_ORG("client_id", client_id) << SRS_JFIELD_CONT
+        << SRS_JFIELD_STR("ip", req->ip) << SRS_JFIELD_CONT
+        << SRS_JFIELD_STR("vhost", req->vhost) << SRS_JFIELD_CONT
+        << SRS_JFIELD_ORG("send_bytes", send_bytes) << SRS_JFIELD_CONT
+        << SRS_JFIELD_ORG("recv_bytes", recv_bytes) << SRS_JFIELD_CONT
+        << SRS_JFIELD_STR("app", req->app)
+        << SRS_JOBJECT_END;
         
     std::string data = ss.str();
     std::string res;
@@ -114,19 +124,21 @@ void SrsHttpHooks::on_close(string url, int client_id, string ip, SrsRequest* re
     return;
 }
 
-int SrsHttpHooks::on_publish(string url, int client_id, string ip, SrsRequest* req)
+int SrsHttpHooks::on_publish(string url, SrsRequest* req)
 {
     int ret = ERROR_SUCCESS;
     
+    int client_id = _srs_context->get_id();
+    
     std::stringstream ss;
-    ss << __SRS_JOBJECT_START
-        << __SRS_JFIELD_STR("action", "on_publish") << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_ORG("client_id", client_id) << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_STR("ip", ip) << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_STR("vhost", req->vhost) << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_STR("app", req->app) << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_STR("stream", req->stream)
-        << __SRS_JOBJECT_END;
+    ss << SRS_JOBJECT_START
+        << SRS_JFIELD_STR("action", "on_publish") << SRS_JFIELD_CONT
+        << SRS_JFIELD_ORG("client_id", client_id) << SRS_JFIELD_CONT
+        << SRS_JFIELD_STR("ip", req->ip) << SRS_JFIELD_CONT
+        << SRS_JFIELD_STR("vhost", req->vhost) << SRS_JFIELD_CONT
+        << SRS_JFIELD_STR("app", req->app) << SRS_JFIELD_CONT
+        << SRS_JFIELD_STR("stream", req->stream)
+        << SRS_JOBJECT_END;
         
     std::string data = ss.str();
     std::string res;
@@ -145,19 +157,21 @@ int SrsHttpHooks::on_publish(string url, int client_id, string ip, SrsRequest* r
     return ret;
 }
 
-void SrsHttpHooks::on_unpublish(string url, int client_id, string ip, SrsRequest* req)
+void SrsHttpHooks::on_unpublish(string url, SrsRequest* req)
 {
     int ret = ERROR_SUCCESS;
     
+    int client_id = _srs_context->get_id();
+    
     std::stringstream ss;
-    ss << __SRS_JOBJECT_START
-        << __SRS_JFIELD_STR("action", "on_unpublish") << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_ORG("client_id", client_id) << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_STR("ip", ip) << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_STR("vhost", req->vhost) << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_STR("app", req->app) << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_STR("stream", req->stream)
-        << __SRS_JOBJECT_END;
+    ss << SRS_JOBJECT_START
+        << SRS_JFIELD_STR("action", "on_unpublish") << SRS_JFIELD_CONT
+        << SRS_JFIELD_ORG("client_id", client_id) << SRS_JFIELD_CONT
+        << SRS_JFIELD_STR("ip", req->ip) << SRS_JFIELD_CONT
+        << SRS_JFIELD_STR("vhost", req->vhost) << SRS_JFIELD_CONT
+        << SRS_JFIELD_STR("app", req->app) << SRS_JFIELD_CONT
+        << SRS_JFIELD_STR("stream", req->stream)
+        << SRS_JOBJECT_END;
         
     std::string data = ss.str();
     std::string res;
@@ -176,19 +190,21 @@ void SrsHttpHooks::on_unpublish(string url, int client_id, string ip, SrsRequest
     return;
 }
 
-int SrsHttpHooks::on_play(string url, int client_id, string ip, SrsRequest* req)
+int SrsHttpHooks::on_play(string url, SrsRequest* req)
 {
     int ret = ERROR_SUCCESS;
     
+    int client_id = _srs_context->get_id();
+    
     std::stringstream ss;
-    ss << __SRS_JOBJECT_START
-        << __SRS_JFIELD_STR("action", "on_play") << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_ORG("client_id", client_id) << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_STR("ip", ip) << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_STR("vhost", req->vhost) << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_STR("app", req->app) << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_STR("stream", req->stream)
-        << __SRS_JOBJECT_END;
+    ss << SRS_JOBJECT_START
+        << SRS_JFIELD_STR("action", "on_play") << SRS_JFIELD_CONT
+        << SRS_JFIELD_ORG("client_id", client_id) << SRS_JFIELD_CONT
+        << SRS_JFIELD_STR("ip", req->ip) << SRS_JFIELD_CONT
+        << SRS_JFIELD_STR("vhost", req->vhost) << SRS_JFIELD_CONT
+        << SRS_JFIELD_STR("app", req->app) << SRS_JFIELD_CONT
+        << SRS_JFIELD_STR("stream", req->stream)
+        << SRS_JOBJECT_END;
         
     std::string data = ss.str();
     std::string res;
@@ -207,19 +223,21 @@ int SrsHttpHooks::on_play(string url, int client_id, string ip, SrsRequest* req)
     return ret;
 }
 
-void SrsHttpHooks::on_stop(string url, int client_id, string ip, SrsRequest* req)
+void SrsHttpHooks::on_stop(string url, SrsRequest* req)
 {
     int ret = ERROR_SUCCESS;
     
+    int client_id = _srs_context->get_id();
+    
     std::stringstream ss;
-    ss << __SRS_JOBJECT_START
-        << __SRS_JFIELD_STR("action", "on_stop") << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_ORG("client_id", client_id) << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_STR("ip", ip) << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_STR("vhost", req->vhost) << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_STR("app", req->app) << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_STR("stream", req->stream)
-        << __SRS_JOBJECT_END;
+    ss << SRS_JOBJECT_START
+        << SRS_JFIELD_STR("action", "on_stop") << SRS_JFIELD_CONT
+        << SRS_JFIELD_ORG("client_id", client_id) << SRS_JFIELD_CONT
+        << SRS_JFIELD_STR("ip", req->ip) << SRS_JFIELD_CONT
+        << SRS_JFIELD_STR("vhost", req->vhost) << SRS_JFIELD_CONT
+        << SRS_JFIELD_STR("app", req->app) << SRS_JFIELD_CONT
+        << SRS_JFIELD_STR("stream", req->stream)
+        << SRS_JOBJECT_END;
         
     std::string data = ss.str();
     std::string res;
@@ -238,21 +256,24 @@ void SrsHttpHooks::on_stop(string url, int client_id, string ip, SrsRequest* req
     return;
 }
 
-int SrsHttpHooks::on_dvr(string url, int client_id, string ip, SrsRequest* req, string cwd, string file)
+int SrsHttpHooks::on_dvr(string url, SrsRequest* req, string file)
 {
     int ret = ERROR_SUCCESS;
     
+    int client_id = _srs_context->get_id();
+    std::string cwd = _srs_config->cwd();
+    
     std::stringstream ss;
-    ss << __SRS_JOBJECT_START
-        << __SRS_JFIELD_STR("action", "on_dvr") << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_ORG("client_id", client_id) << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_STR("ip", ip) << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_STR("vhost", req->vhost) << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_STR("app", req->app) << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_STR("stream", req->stream) << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_STR("cwd", cwd) << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_STR("file", file)
-        << __SRS_JOBJECT_END;
+    ss << SRS_JOBJECT_START
+        << SRS_JFIELD_STR("action", "on_dvr") << SRS_JFIELD_CONT
+        << SRS_JFIELD_ORG("client_id", client_id) << SRS_JFIELD_CONT
+        << SRS_JFIELD_STR("ip", req->ip) << SRS_JFIELD_CONT
+        << SRS_JFIELD_STR("vhost", req->vhost) << SRS_JFIELD_CONT
+        << SRS_JFIELD_STR("app", req->app) << SRS_JFIELD_CONT
+        << SRS_JFIELD_STR("stream", req->stream) << SRS_JFIELD_CONT
+        << SRS_JFIELD_STR("cwd", cwd) << SRS_JFIELD_CONT
+        << SRS_JFIELD_STR("file", file)
+        << SRS_JOBJECT_END;
         
     std::string data = ss.str();
     std::string res;
@@ -271,34 +292,108 @@ int SrsHttpHooks::on_dvr(string url, int client_id, string ip, SrsRequest* req, 
     return ret;
 }
 
-int SrsHttpHooks::on_dvr_reap_segment(string url, int client_id, SrsRequest* req, string cwd, string file)
+int SrsHttpHooks::on_hls(string url, SrsRequest* req, string file, int sn, double duration)
 {
     int ret = ERROR_SUCCESS;
     
+    int client_id = _srs_context->get_id();
+    std::string cwd = _srs_config->cwd();
+    
     std::stringstream ss;
-    ss << __SRS_JOBJECT_START
-        << __SRS_JFIELD_STR("action", "on_dvr_reap_segment") << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_ORG("client_id", client_id) << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_STR("vhost", req->vhost) << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_STR("app", req->app) << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_STR("stream", req->stream) << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_STR("cwd", cwd) << __SRS_JFIELD_CONT
-        << __SRS_JFIELD_STR("file", file)
-        << __SRS_JOBJECT_END;
+    ss << SRS_JOBJECT_START
+        << SRS_JFIELD_STR("action", "on_hls") << SRS_JFIELD_CONT
+        << SRS_JFIELD_ORG("client_id", client_id) << SRS_JFIELD_CONT
+        << SRS_JFIELD_STR("ip", req->ip) << SRS_JFIELD_CONT
+        << SRS_JFIELD_STR("vhost", req->vhost) << SRS_JFIELD_CONT
+        << SRS_JFIELD_STR("app", req->app) << SRS_JFIELD_CONT
+        << SRS_JFIELD_STR("stream", req->stream) << SRS_JFIELD_CONT
+        << SRS_JFIELD_ORG("duration", duration) << SRS_JFIELD_CONT
+        << SRS_JFIELD_STR("cwd", cwd) << SRS_JFIELD_CONT
+        << SRS_JFIELD_STR("file", file) << SRS_JFIELD_CONT
+        << SRS_JFIELD_ORG("seq_no", sn)
+        << SRS_JOBJECT_END;
         
     std::string data = ss.str();
     std::string res;
     int status_code;
     if ((ret = do_post(url, data, status_code, res)) != ERROR_SUCCESS) {
-        srs_error("http post on_dvr_reap_segment uri failed, ignored. "
+        srs_error("http post on_hls uri failed, ignored. "
             "client_id=%d, url=%s, request=%s, response=%s, code=%d, ret=%d",
             client_id, url.c_str(), data.c_str(), res.c_str(), status_code, ret);
         return ret;
     }
     
-    srs_trace("http hook on_dvr_reap_segment success. "
+    srs_trace("http hook on_hls success. "
         "client_id=%d, url=%s, request=%s, response=%s, ret=%d",
         client_id, url.c_str(), data.c_str(), res.c_str(), ret);
+    
+    return ret;
+}
+
+int SrsHttpHooks::on_hls_notify(std::string url, SrsRequest* req, std::string ts_url, int nb_notify)
+{
+    int ret = ERROR_SUCCESS;
+    
+    int client_id = _srs_context->get_id();
+    std::string cwd = _srs_config->cwd();
+    
+    if (srs_string_starts_with(ts_url, "http://") || srs_string_starts_with(ts_url, "https://")) {
+        url = ts_url;
+    }
+    
+    url = srs_string_replace(url, "[app]", req->app);
+    url = srs_string_replace(url, "[stream]", req->stream);
+    url = srs_string_replace(url, "[ts_url]", ts_url);
+    
+    int64_t starttime = srs_update_system_time_ms();
+    
+    SrsHttpUri uri;
+    if ((ret = uri.initialize(url)) != ERROR_SUCCESS) {
+        srs_error("http: post failed. url=%s, ret=%d", url.c_str(), ret);
+        return ret;
+    }
+    
+    SrsHttpClient http;
+    if ((ret = http.initialize(uri.get_host(), uri.get_port(), SRS_HLS_NOTIFY_TIMEOUT_US)) != ERROR_SUCCESS) {
+        return ret;
+    }
+    
+    std::string path = uri.get_query();
+    if (path.empty()) {
+        path = uri.get_path();
+    } else {
+        path = uri.get_path();
+        path += "?";
+        path += uri.get_query();
+    }
+    srs_warn("GET %s", path.c_str());
+    
+    SrsHttpMessage* msg = NULL;
+    if ((ret = http.get(path.c_str(), "", &msg)) != ERROR_SUCCESS) {
+        return ret;
+    }
+    SrsAutoFree(SrsHttpMessage, msg);
+    
+    int nb_buf = srs_min(nb_notify, SRS_HTTP_READ_BUFFER);
+    char* buf = new char[nb_buf];
+    SrsAutoFree(char, buf);
+    
+    int nb_read = 0;
+    ISrsHttpResponseReader* br = msg->body_reader();
+    while (nb_read < nb_notify && !br->eof()) {
+        int nb_bytes = 0;
+        if ((ret = br->read(buf, nb_buf, &nb_bytes)) != ERROR_SUCCESS) {
+            break;
+        }
+        nb_read += nb_bytes;
+    }
+    
+    int spenttime = (int)(srs_update_system_time_ms() - starttime);
+    srs_trace("http hook on_hls_notify success. client_id=%d, url=%s, code=%d, spent=%dms, read=%dB, ret=%d",
+        client_id, url.c_str(), msg->status_code(), spenttime, nb_read, ret);
+    
+    // ignore any error for on_hls_notify.
+    ret = ERROR_SUCCESS;
     
     return ret;
 }
