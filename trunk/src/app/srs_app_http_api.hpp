@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 winlin
+Copyright (c) 2013-2015 SRS(simple-rtmp-server)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -33,13 +33,13 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #ifdef SRS_AUTO_HTTP_API
 
 class SrsStSocket;
-class SrsHttpMessage;
+class ISrsHttpMessage;
 class SrsHttpParser;
 class SrsHttpHandler;
 
 #include <srs_app_st.hpp>
 #include <srs_app_conn.hpp>
-#include <srs_app_http.hpp>
+#include <srs_http_stack.hpp>
 
 // for http root.
 class SrsGoApiRoot : public ISrsHttpHandler
@@ -48,7 +48,7 @@ public:
     SrsGoApiRoot();
     virtual ~SrsGoApiRoot();
 public:
-    virtual int serve_http(ISrsHttpResponseWriter* w, SrsHttpMessage* r);
+    virtual int serve_http(ISrsHttpResponseWriter* w, ISrsHttpMessage* r);
 };
 
 class SrsGoApiApi : public ISrsHttpHandler
@@ -57,7 +57,7 @@ public:
     SrsGoApiApi();
     virtual ~SrsGoApiApi();
 public:
-    virtual int serve_http(ISrsHttpResponseWriter* w, SrsHttpMessage* r);
+    virtual int serve_http(ISrsHttpResponseWriter* w, ISrsHttpMessage* r);
 };
 
 class SrsGoApiV1 : public ISrsHttpHandler
@@ -66,7 +66,7 @@ public:
     SrsGoApiV1();
     virtual ~SrsGoApiV1();
 public:
-    virtual int serve_http(ISrsHttpResponseWriter* w, SrsHttpMessage* r);
+    virtual int serve_http(ISrsHttpResponseWriter* w, ISrsHttpMessage* r);
 };
 
 class SrsGoApiVersion : public ISrsHttpHandler
@@ -75,7 +75,7 @@ public:
     SrsGoApiVersion();
     virtual ~SrsGoApiVersion();
 public:
-    virtual int serve_http(ISrsHttpResponseWriter* w, SrsHttpMessage* r);
+    virtual int serve_http(ISrsHttpResponseWriter* w, ISrsHttpMessage* r);
 };
 
 class SrsGoApiSummaries : public ISrsHttpHandler
@@ -84,7 +84,7 @@ public:
     SrsGoApiSummaries();
     virtual ~SrsGoApiSummaries();
 public:
-    virtual int serve_http(ISrsHttpResponseWriter* w, SrsHttpMessage* r);
+    virtual int serve_http(ISrsHttpResponseWriter* w, ISrsHttpMessage* r);
 };
 
 class SrsGoApiRusages : public ISrsHttpHandler
@@ -93,7 +93,7 @@ public:
     SrsGoApiRusages();
     virtual ~SrsGoApiRusages();
 public:
-    virtual int serve_http(ISrsHttpResponseWriter* w, SrsHttpMessage* r);
+    virtual int serve_http(ISrsHttpResponseWriter* w, ISrsHttpMessage* r);
 };
 
 class SrsGoApiSelfProcStats : public ISrsHttpHandler
@@ -102,7 +102,7 @@ public:
     SrsGoApiSelfProcStats();
     virtual ~SrsGoApiSelfProcStats();
 public:
-    virtual int serve_http(ISrsHttpResponseWriter* w, SrsHttpMessage* r);
+    virtual int serve_http(ISrsHttpResponseWriter* w, ISrsHttpMessage* r);
 };
 
 class SrsGoApiSystemProcStats : public ISrsHttpHandler
@@ -111,7 +111,7 @@ public:
     SrsGoApiSystemProcStats();
     virtual ~SrsGoApiSystemProcStats();
 public:
-    virtual int serve_http(ISrsHttpResponseWriter* w, SrsHttpMessage* r);
+    virtual int serve_http(ISrsHttpResponseWriter* w, ISrsHttpMessage* r);
 };
 
 class SrsGoApiMemInfos : public ISrsHttpHandler
@@ -120,7 +120,7 @@ public:
     SrsGoApiMemInfos();
     virtual ~SrsGoApiMemInfos();
 public:
-    virtual int serve_http(ISrsHttpResponseWriter* w, SrsHttpMessage* r);
+    virtual int serve_http(ISrsHttpResponseWriter* w, ISrsHttpMessage* r);
 };
 
 class SrsGoApiAuthors : public ISrsHttpHandler
@@ -129,7 +129,7 @@ public:
     SrsGoApiAuthors();
     virtual ~SrsGoApiAuthors();
 public:
-    virtual int serve_http(ISrsHttpResponseWriter* w, SrsHttpMessage* r);
+    virtual int serve_http(ISrsHttpResponseWriter* w, ISrsHttpMessage* r);
 };
 
 class SrsGoApiRequests : public ISrsHttpHandler
@@ -138,7 +138,7 @@ public:
     SrsGoApiRequests();
     virtual ~SrsGoApiRequests();
 public:
-    virtual int serve_http(ISrsHttpResponseWriter* w, SrsHttpMessage* r);
+    virtual int serve_http(ISrsHttpResponseWriter* w, ISrsHttpMessage* r);
 };
 
 class SrsGoApiVhosts : public ISrsHttpHandler
@@ -147,7 +147,7 @@ public:
     SrsGoApiVhosts();
     virtual ~SrsGoApiVhosts();
 public:
-    virtual int serve_http(ISrsHttpResponseWriter* w, SrsHttpMessage* r);
+    virtual int serve_http(ISrsHttpResponseWriter* w, ISrsHttpMessage* r);
 };
 
 class SrsGoApiStreams : public ISrsHttpHandler
@@ -156,7 +156,7 @@ public:
     SrsGoApiStreams();
     virtual ~SrsGoApiStreams();
 public:
-    virtual int serve_http(ISrsHttpResponseWriter* w, SrsHttpMessage* r);
+    virtual int serve_http(ISrsHttpResponseWriter* w, ISrsHttpMessage* r);
 };
 
 class SrsHttpApi : public SrsConnection
@@ -166,7 +166,7 @@ private:
     SrsHttpServeMux* mux;
     bool crossdomain_required;
 public:
-    SrsHttpApi(SrsServer* svr, st_netfd_t fd, SrsHttpServeMux* m);
+    SrsHttpApi(IConnectionManager* cm, st_netfd_t fd, SrsHttpServeMux* m);
     virtual ~SrsHttpApi();
 // interface IKbpsDelta
 public:
@@ -177,7 +177,7 @@ public:
 protected:
     virtual int do_cycle();
 private:
-    virtual int process_request(ISrsHttpResponseWriter* w, SrsHttpMessage* r);
+    virtual int process_request(ISrsHttpResponseWriter* w, ISrsHttpMessage* r);
 };
 
 #endif

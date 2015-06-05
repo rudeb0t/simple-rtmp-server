@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 winlin
+Copyright (c) 2013-2015 SRS(simple-rtmp-server)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -498,12 +498,13 @@ int SrsFlvSegment::on_reload_vhost_dvr(std::string /*vhost*/)
 
 SrsDvrAsyncCallOnDvr::SrsDvrAsyncCallOnDvr(SrsRequest* r, string p)
 {
-    req = r;
+    req = r->copy();
     path = p;
 }
 
 SrsDvrAsyncCallOnDvr::~SrsDvrAsyncCallOnDvr()
 {
+    srs_freep(req);
 }
 
 int SrsDvrAsyncCallOnDvr::call()
@@ -547,7 +548,7 @@ SrsDvrPlan::SrsDvrPlan()
 
     dvr_enabled = false;
     segment = new SrsFlvSegment(this);
-    async = new SrsDvrAsyncCallThread();
+    async = new SrsAsyncCallWorker();
 }
 
 SrsDvrPlan::~SrsDvrPlan()
@@ -628,7 +629,7 @@ int SrsDvrPlan::on_reap_segment()
 {
     int ret = ERROR_SUCCESS;
 
-    if ((ret = async->call(new SrsDvrAsyncCallOnDvr(req, segment->get_path()))) != ERROR_SUCCESS) {
+    if ((ret = async->execute(new SrsDvrAsyncCallOnDvr(req, segment->get_path()))) != ERROR_SUCCESS) {
         return ret;
     }
 
@@ -916,7 +917,7 @@ int SrsDvrSegmentPlan::update_duration(SrsSharedPtrMessage* msg)
     }
     
     // when wait keyframe, ignore if no frame arrived.
-    // @see https://github.com/winlinvip/simple-rtmp-server/issues/177
+    // @see https://github.com/simple-rtmp-server/srs/issues/177
     if (_srs_config->get_dvr_wait_keyframe(req->vhost)) {
         if (!msg->is_video()) {
             return ret;

@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 winlin
+Copyright (c) 2013-2015 SRS(simple-rtmp-server)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -23,7 +23,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include <srs_kernel_utility.hpp>
 
-// for srs-librtmp, @see https://github.com/winlinvip/simple-rtmp-server/issues/213
+// for srs-librtmp, @see https://github.com/simple-rtmp-server/srs/issues/213
 #ifndef _WIN32
 #include <unistd.h>
 #include <netdb.h>
@@ -40,6 +40,7 @@ using namespace std;
 #include <srs_kernel_log.hpp>
 #include <srs_kernel_error.hpp>
 #include <srs_kernel_stream.hpp>
+#include <srs_kernel_flv.hpp>
 
 // this value must:
 // equals to (SRS_SYS_CYCLE_INTERVAL*SRS_SYS_TIME_RESOLUTION_MS_TIMES)*1000
@@ -61,7 +62,7 @@ int srs_avc_nalu_read_uev(SrsBitStream* stream, int32_t& v)
     //      for( b = 0; !b; leadingZeroBits++ )
     //          b = read_bits( 1 )
     // The variable codeNum is then assigned as follows:
-    //      codeNum = (2<<leadingZeroBits) – 1 + read_bits( leadingZeroBits )
+    //      codeNum = (2<<leadingZeroBits) - 1 + read_bits( leadingZeroBits )
     int leadingZeroBits = -1;
     for (int8_t b = 0; !b && !stream->empty(); leadingZeroBits++) {
         b = stream->read_bit();
@@ -121,7 +122,7 @@ int64_t srs_update_system_time_ms()
         return -1;
     }
 
-    // @see: https://github.com/winlinvip/simple-rtmp-server/issues/35
+    // @see: https://github.com/simple-rtmp-server/srs/issues/35
     // we must convert the tv_sec/tv_usec to int64_t.
     int64_t now_us = ((int64_t)now.tv_sec) * 1000 * 1000 + (int64_t)now.tv_usec;
     
@@ -143,7 +144,7 @@ int64_t srs_update_system_time_ms()
     if (diff < 0 || diff > 1000 * SYS_TIME_RESOLUTION_US) {
         srs_warn("system time jump, history=%"PRId64"us, now=%"PRId64"us, diff=%"PRId64"us", 
             _srs_system_time_us_cache, now_us, diff);
-        // @see: https://github.com/winlinvip/simple-rtmp-server/issues/109
+        // @see: https://github.com/simple-rtmp-server/srs/issues/109
         _srs_system_time_startup_time += diff;
     }
     
@@ -757,5 +758,133 @@ int ff_hex_to_data(u_int8_t* data, const char* p)
         }
     }
     return len;
+}
+
+int srs_chunk_header_c0(
+    int perfer_cid, u_int32_t timestamp, int32_t payload_length,
+    int8_t message_type, int32_t stream_id,
+    char* cache, int nb_cache
+) {
+    // to directly set the field.
+    char* pp = NULL;
+    
+    // generate the header.
+    char* p = cache;
+    
+    // no header.
+    if (nb_cache < SRS_CONSTS_RTMP_MAX_FMT0_HEADER_SIZE) {
+        return 0;
+    }
+    
+    // write new chunk stream header, fmt is 0
+    *p++ = 0x00 | (perfer_cid & 0x3F);
+    
+    // chunk message header, 11 bytes
+    // timestamp, 3bytes, big-endian
+    if (timestamp < RTMP_EXTENDED_TIMESTAMP) {
+        pp = (char*)&timestamp;
+        *p++ = pp[2];
+        *p++ = pp[1];
+        *p++ = pp[0];
+    } else {
+        *p++ = 0xFF;
+        *p++ = 0xFF;
+        *p++ = 0xFF;
+    }
+    
+    // message_length, 3bytes, big-endian
+    pp = (char*)&payload_length;
+    *p++ = pp[2];
+    *p++ = pp[1];
+    *p++ = pp[0];
+    
+    // message_type, 1bytes
+    *p++ = message_type;
+    
+    // stream_id, 4bytes, little-endian
+    pp = (char*)&stream_id;
+    *p++ = pp[0];
+    *p++ = pp[1];
+    *p++ = pp[2];
+    *p++ = pp[3];
+    
+    // for c0
+    // chunk extended timestamp header, 0 or 4 bytes, big-endian
+    //
+    // for c3:
+    // chunk extended timestamp header, 0 or 4 bytes, big-endian
+    // 6.1.3. Extended Timestamp
+    // This field is transmitted only when the normal time stamp in the
+    // chunk message header is set to 0x00ffffff. If normal time stamp is
+    // set to any value less than 0x00ffffff, this field MUST NOT be
+    // present. This field MUST NOT be present if the timestamp field is not
+    // present. Type 3 chunks MUST NOT have this field.
+    // adobe changed for Type3 chunk:
+    //        FMLE always sendout the extended-timestamp,
+    //        must send the extended-timestamp to FMS,
+    //        must send the extended-timestamp to flash-player.
+    // @see: ngx_rtmp_prepare_message
+    // @see: http://blog.csdn.net/win_lin/article/details/13363699
+    // TODO: FIXME: extract to outer.
+    if (timestamp >= RTMP_EXTENDED_TIMESTAMP) {
+        pp = (char*)&timestamp;
+        *p++ = pp[3];
+        *p++ = pp[2];
+        *p++ = pp[1];
+        *p++ = pp[0];
+    }
+    
+    // always has header
+    return p - cache;
+}
+
+int srs_chunk_header_c3(
+    int perfer_cid, u_int32_t timestamp,
+    char* cache, int nb_cache
+) {
+    // to directly set the field.
+    char* pp = NULL;
+    
+    // generate the header.
+    char* p = cache;
+    
+    // no header.
+    if (nb_cache < SRS_CONSTS_RTMP_MAX_FMT3_HEADER_SIZE) {
+        return 0;
+    }
+    
+    // write no message header chunk stream, fmt is 3
+    // @remark, if perfer_cid > 0x3F, that is, use 2B/3B chunk header,
+    // SRS will rollback to 1B chunk header.
+    *p++ = 0xC0 | (perfer_cid & 0x3F);
+    
+    // for c0
+    // chunk extended timestamp header, 0 or 4 bytes, big-endian
+    //
+    // for c3:
+    // chunk extended timestamp header, 0 or 4 bytes, big-endian
+    // 6.1.3. Extended Timestamp
+    // This field is transmitted only when the normal time stamp in the
+    // chunk message header is set to 0x00ffffff. If normal time stamp is
+    // set to any value less than 0x00ffffff, this field MUST NOT be
+    // present. This field MUST NOT be present if the timestamp field is not
+    // present. Type 3 chunks MUST NOT have this field.
+    // adobe changed for Type3 chunk:
+    //        FMLE always sendout the extended-timestamp,
+    //        must send the extended-timestamp to FMS,
+    //        must send the extended-timestamp to flash-player.
+    // @see: ngx_rtmp_prepare_message
+    // @see: http://blog.csdn.net/win_lin/article/details/13363699
+    // TODO: FIXME: extract to outer.
+    if (timestamp >= RTMP_EXTENDED_TIMESTAMP) {
+        pp = (char*)&timestamp;
+        *p++ = pp[3];
+        *p++ = pp[2];
+        *p++ = pp[1];
+        *p++ = pp[0];
+    }
+    
+    // always has header
+    return p - cache;
 }
 

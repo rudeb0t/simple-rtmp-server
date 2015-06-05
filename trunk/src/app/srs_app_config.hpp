@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 winlin
+Copyright (c) 2013-2015 SRS(simple-rtmp-server)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -100,6 +100,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define SRS_CONF_DEFAULT_STREAM_CASTER_ENABLED false
 #define SRS_CONF_DEFAULT_STREAM_CASTER_MPEGTS_OVER_UDP "mpegts_over_udp"
 #define SRS_CONF_DEFAULT_STREAM_CASTER_RTSP "rtsp"
+#define SRS_CONF_DEFAULT_STREAM_CASTER_FLV "flv"
 
 #define SRS_CONF_DEFAULT_STATS_NETWORK_DEVICE_INDEX 0
 
@@ -266,6 +267,13 @@ class SrsConfig
 // user command
 private:
     /**
+     * whether srs is run in dolphin mode.
+     * @see https://github.com/simple-rtmp-server/srs-dolphin
+     */
+    bool dolphin;
+    std::string dolphin_rtmp_port;
+    std::string dolphin_http_port;
+    /**
     * whether show help and exit.
     */
     bool show_help;
@@ -308,6 +316,14 @@ private:
 public:
     SrsConfig();
     virtual ~SrsConfig();
+// dolphin
+public:
+    /**
+     * whether srs is in dolphin mode.
+     */
+    virtual bool is_dolphin();
+private:
+    virtual void set_config_directive(SrsConfDirective* parent, std::string dir, std::string value);
 // reload
 public:
     /**
@@ -508,7 +524,7 @@ public:
     * whether debug_srs_upnode is enabled of vhost.
     * debug_srs_upnode is very important feature for tracable log,
     * but some server, for instance, flussonic donot support it.
-    * @see https://github.com/winlinvip/simple-rtmp-server/issues/160
+    * @see https://github.com/simple-rtmp-server/srs/issues/160
     * @return true when debug_srs_upnode is ok; otherwise, false.
     * @remark, default true.
     */
@@ -713,7 +729,7 @@ public:
     virtual bool                get_vhost_edge_token_traverse(std::string vhost);
     /**
      * get the transformed vhost for edge,
-     * @see https://github.com/winlinvip/simple-rtmp-server/issues/372
+     * @see https://github.com/simple-rtmp-server/srs/issues/372
      */
     virtual std::string         get_vhost_edge_transform_vhost(std::string vhost);
 // vhost security section
@@ -945,7 +961,7 @@ public:
     * get the hls hls_on_error config.
     * the ignore will ignore error and disable hls.
     * the disconnect will disconnect publish connection.
-    * @see https://github.com/winlinvip/simple-rtmp-server/issues/264
+    * @see https://github.com/simple-rtmp-server/srs/issues/264
     */
     virtual std::string         get_hls_on_error(std::string vhost);
     /**
@@ -968,6 +984,10 @@ public:
      * whether cleanup the old ts files.
      */
     virtual bool                get_hls_cleanup(std::string vhost);
+    /**
+     * the timeout to dispose the hls.
+     */
+    virtual int                 get_hls_dispose(std::string vhost);
     /**
      * whether reap the ts when got keyframe.
      */

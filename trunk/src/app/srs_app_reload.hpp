@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 winlin
+Copyright (c) 2013-2015 SRS(simple-rtmp-server)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -36,7 +36,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 * when reload callback, the config is updated yet.
 * 
 * features not support reload, 
-* @see: https://github.com/winlinvip/simple-rtmp-server/wiki/v1_CN_Reload#notsupportedfeatures
+* @see: https://github.com/simple-rtmp-server/srs/wiki/v1_CN_Reload#notsupportedfeatures
 */
 class ISrsReloadHandler
 {
@@ -44,6 +44,7 @@ public:
     ISrsReloadHandler();
     virtual ~ISrsReloadHandler();
 public:
+    virtual int on_reload_max_conns();
     virtual int on_reload_listen();
     virtual int on_reload_pid();
     virtual int on_reload_log_tank();
@@ -55,6 +56,7 @@ public:
     virtual int on_reload_http_stream_enabled();
     virtual int on_reload_http_stream_disabled();
     virtual int on_reload_http_stream_updated();
+public:
     virtual int on_reload_vhost_http_updated();
     virtual int on_reload_vhost_http_remux_updated();
     virtual int on_reload_vhost_added(std::string vhost);

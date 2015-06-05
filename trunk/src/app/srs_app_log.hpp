@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 winlin
+Copyright (c) 2013-2015 SRS(simple-rtmp-server)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -51,7 +51,7 @@ public:
     SrsThreadContext();
     virtual ~SrsThreadContext();
 public:
-    virtual void generate_id();
+    virtual int generate_id();
     virtual int get_id();
 };
 
@@ -82,7 +82,7 @@ public:
     virtual void trace(const char* tag, int context_id, const char* fmt, ...);
     virtual void warn(const char* tag, int context_id, const char* fmt, ...);
     virtual void error(const char* tag, int context_id, const char* fmt, ...);
-// interface ISrsThreadHandler.
+// interface ISrsReloadHandler.
 public:
     virtual int on_reload_log_tank();
     virtual int on_reload_log_level();

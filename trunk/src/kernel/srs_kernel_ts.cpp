@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 winlin
+Copyright (c) 2013-2015 SRS(simple-rtmp-server)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -23,7 +23,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include <srs_kernel_ts.hpp>
 
-// for srs-librtmp, @see https://github.com/winlinvip/simple-rtmp-server/issues/213
+// for srs-librtmp, @see https://github.com/simple-rtmp-server/srs/issues/213
 #ifndef _WIN32
 #include <unistd.h>
 #endif
@@ -302,10 +302,12 @@ int SrsTsContext::encode(SrsFileWriter* writer, SrsTsMessage* msg, SrsCodecVideo
             vs = SrsTsStreamVideoH264; 
             video_pid = TS_VIDEO_AVC_PID;
             break;
+        case SrsCodecVideoDisabled:
+            vs = SrsTsStreamReserved;
+            break;
         case SrsCodecVideoReserved:
         case SrsCodecVideoReserved1:
         case SrsCodecVideoReserved2:
-        case SrsCodecVideoDisabled:
         case SrsCodecVideoSorensonH263:
         case SrsCodecVideoScreenVideo:
         case SrsCodecVideoOn2VP6:
@@ -323,6 +325,9 @@ int SrsTsContext::encode(SrsFileWriter* writer, SrsTsMessage* msg, SrsCodecVideo
             as = SrsTsStreamAudioMp3; 
             audio_pid = TS_AUDIO_MP3_PID;
             break;
+        case SrsCodecAudioDisabled:
+            as = SrsTsStreamReserved;
+            break;
         case SrsCodecAudioReserved1:
         case SrsCodecAudioLinearPCMPlatformEndian:
         case SrsCodecAudioADPCM:
@@ -338,6 +343,12 @@ int SrsTsContext::encode(SrsFileWriter* writer, SrsTsMessage* msg, SrsCodecVideo
         case SrsCodecAudioReservedDeviceSpecificSound:
             as = SrsTsStreamReserved;
             break;
+    }
+    
+    if (as == SrsTsStreamReserved && vs == SrsTsStreamReserved) {
+        ret = ERROR_HLS_NO_STREAM;
+        srs_error("hls: no video or audio stream, vcodec=%d, acodec=%d. ret=%d", vc, ac, ret);
+        return ret;
     }
     
     // when any codec changed, write PAT/PMT table.
@@ -360,6 +371,12 @@ int SrsTsContext::encode(SrsFileWriter* writer, SrsTsMessage* msg, SrsCodecVideo
 int SrsTsContext::encode_pat_pmt(SrsFileWriter* writer, int16_t vpid, SrsTsStream vs, int16_t apid, SrsTsStream as)
 {
     int ret = ERROR_SUCCESS;
+    
+    if (vs != SrsTsStreamVideoH264 && as != SrsTsStreamAudioAAC && as != SrsTsStreamAudioMp3) {
+        ret = ERROR_HLS_NO_STREAM;
+        srs_error("hls: no pmt pcr pid, vs=%d, as=%d. ret=%d", vs, as, ret);
+        return ret;
+    }
 
     int16_t pmt_number = TS_PMT_NUMBER;
     int16_t pmt_pid = TS_PMT_PID;
@@ -447,7 +464,7 @@ int SrsTsContext::encode_pes(SrsFileWriter* writer, SrsTsMessage* msg, int16_t p
             }
 
             // it's ok to set pcr equals to dts,
-            // @see https://github.com/winlinvip/simple-rtmp-server/issues/311
+            // @see https://github.com/simple-rtmp-server/srs/issues/311
             int64_t pcr = write_pcr? msg->dts : -1;
             
             // TODO: FIXME: finger it why use discontinuity of msg.
@@ -754,10 +771,16 @@ SrsTsPacket* SrsTsPacket::create_pmt(SrsTsContext* context, int16_t pmt_number, 
     pmt->last_section_number = 0;
     pmt->program_info_length = 0;
     
-    // use audio to carray pcr by default.
-    // for hls, there must be atleast one audio channel.
-    pmt->PCR_PID = apid;
-    pmt->infos.push_back(new SrsTsPayloadPMTESInfo(as, apid));
+    // must got one valid codec.
+    srs_assert(vs == SrsTsStreamVideoH264 || as == SrsTsStreamAudioAAC || as == SrsTsStreamAudioMp3);
+    
+    // if mp3 or aac specified, use audio to carry pcr.
+    if (as == SrsTsStreamAudioAAC || as == SrsTsStreamAudioMp3) {
+        // use audio to carray pcr by default.
+        // for hls, there must be atleast one audio channel.
+        pmt->PCR_PID = apid;
+        pmt->infos.push_back(new SrsTsPayloadPMTESInfo(as, apid));
+    }
     
     // if h.264 specified, use video to carry pcr.
     if (vs == SrsTsStreamVideoH264) {
@@ -956,7 +979,7 @@ int SrsTsAdaptationField::decode(SrsStream* stream)
         pp[0] = *p++;
         
         // @remark, use pcr base and ignore the extension
-        // @see https://github.com/winlinvip/simple-rtmp-server/issues/250#issuecomment-71349370
+        // @see https://github.com/simple-rtmp-server/srs/issues/250#issuecomment-71349370
         program_clock_reference_extension = pcrv & 0x1ff;
         const1_value0 = (pcrv >> 9) & 0x3F;
         program_clock_reference_base = (pcrv >> 15) & 0x1ffffffffLL;
@@ -983,7 +1006,7 @@ int SrsTsAdaptationField::decode(SrsStream* stream)
         pp[0] = *p++;
         
         // @remark, use pcr base and ignore the extension
-        // @see https://github.com/winlinvip/simple-rtmp-server/issues/250#issuecomment-71349370
+        // @see https://github.com/simple-rtmp-server/srs/issues/250#issuecomment-71349370
         original_program_clock_reference_extension = opcrv & 0x1ff;
         const1_value2 = (opcrv >> 9) & 0x3F;
         original_program_clock_reference_base = (opcrv >> 15) & 0x1ffffffffLL;
@@ -1163,7 +1186,7 @@ int SrsTsAdaptationField::encode(SrsStream* stream)
         stream->skip(6);
         
         // @remark, use pcr base and ignore the extension
-        // @see https://github.com/winlinvip/simple-rtmp-server/issues/250#issuecomment-71349370
+        // @see https://github.com/simple-rtmp-server/srs/issues/250#issuecomment-71349370
         int64_t pcrv = program_clock_reference_extension & 0x1ff;
         pcrv |= (const1_value0 << 9) & 0x7E00;
         pcrv |= (program_clock_reference_base << 15) & 0x1FFFFFFFF000000LL;
@@ -2898,7 +2921,7 @@ int SrsTsCache::do_cache_avc(SrsAvcAacCodec* codec, SrsCodecSample* sample)
      *       xxxxxxx // data bytes.
      *
      * nal_unit_type specifies the type of RBSP data structure contained in the NAL unit as specified in Table 7-1.
-     * Table 7-1 – NAL unit type codes, syntax element categories, and NAL unit type classes
+     * Table 7-1 - NAL unit type codes, syntax element categories, and NAL unit type classes
      * H.264-AVC-ISO_IEC_14496-10-2012.pdf, page 83.
      *      1, Coded slice of a non-IDR picture slice_layer_without_partitioning_rbsp( )
      *      2, Coded slice data partition A slice_data_partition_a_layer_rbsp( )
@@ -3136,7 +3159,7 @@ int SrsTsEncoder::write_video(int64_t timestamp, char* data, int size)
     }
     
     // ignore info frame,
-    // @see https://github.com/winlinvip/simple-rtmp-server/issues/288#issuecomment-69863909
+    // @see https://github.com/simple-rtmp-server/srs/issues/288#issuecomment-69863909
     if (sample->frame_type == SrsCodecVideoAVCFrameVideoInfoFrame) {
         return ret;
     }

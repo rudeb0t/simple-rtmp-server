@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 winlin
+Copyright (c) 2013-2015 SRS(simple-rtmp-server)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -39,7 +39,6 @@ using namespace std;
 #include <srs_kernel_stream.hpp>
 #include <srs_kernel_ts.hpp>
 #include <srs_app_http_client.hpp>
-#include <srs_app_http.hpp>
 #include <srs_core_autofree.hpp>
 #include <srs_app_st.hpp>
 #include <srs_rtmp_utility.hpp>
@@ -47,6 +46,7 @@ using namespace std;
 #include <srs_app_utility.hpp>
 #include <srs_rtmp_amf0.hpp>
 #include <srs_raw_avc.hpp>
+#include <srs_app_http_conn.hpp>
 
 // pre-declare
 int proxy_hls2rtmp(std::string hls, std::string rtmp);
@@ -61,6 +61,8 @@ ISrsThreadContext* _srs_context = new ISrsThreadContext();
 SrsConfig* _srs_config = NULL;
 SrsServer* _srs_server = NULL;
 
+#if defined(SRS_AUTO_HTTP_CORE)
+
 /**
 * main entrance.
 */
@@ -70,7 +72,7 @@ int main(int argc, char** argv)
     srs_assert(srs_is_little_endian());
     
     // directly failed when compile limited.
-#if !defined(SRS_AUTO_HTTP_PARSER)
+#if !defined(SRS_AUTO_HTTP_CORE)
     srs_error("depends on http-parser.");
     exit(-1);
 #endif
@@ -383,14 +385,14 @@ int SrsIngestSrsInput::parseM3u8(SrsHttpUri* url, double& td, double& duration)
         return ret;
     }
     
-    SrsHttpMessage* msg = NULL;
+    ISrsHttpMessage* msg = NULL;
     if ((ret = client.get(url->get_path(), "", &msg)) != ERROR_SUCCESS) {
         srs_error("HTTP GET %s failed. ret=%d", url->get_url(), ret);
         return ret;
     }
     
     srs_assert(msg);
-    SrsAutoFree(SrsHttpMessage, msg);
+    SrsAutoFree(ISrsHttpMessage, msg);
     
     std::string body;
     if ((ret = msg->body_read_all(body)) != ERROR_SUCCESS) {
@@ -605,14 +607,14 @@ int SrsIngestSrsInput::SrsTsPiece::fetch(string m3u8)
         return ret;
     }
     
-    SrsHttpMessage* msg = NULL;
+    ISrsHttpMessage* msg = NULL;
     if ((ret = client.get(uri.get_path(), "", &msg)) != ERROR_SUCCESS) {
         srs_error("HTTP GET %s failed. ret=%d", uri.get_url(), ret);
         return ret;
     }
     
     srs_assert(msg);
-    SrsAutoFree(SrsHttpMessage, msg);
+    SrsAutoFree(ISrsHttpMessage, msg);
     
     if ((ret = msg->body_read_all(body)) != ERROR_SUCCESS) {
         srs_error("read ts failed. ret=%d", ret);
@@ -1090,7 +1092,7 @@ int SrsIngestSrsOutput::write_h264_ipb_frame(string ibps, SrsCodecVideoAVCFrame 
     int ret = ERROR_SUCCESS;
     
     // when sps or pps not sent, ignore the packet.
-    // @see https://github.com/winlinvip/simple-rtmp-server/issues/203
+    // @see https://github.com/simple-rtmp-server/srs/issues/203
     if (!h264_sps_pps_sent) {
         return ERROR_H264_DROP_BEFORE_SPS_PPS;
     }
@@ -1278,7 +1280,7 @@ int SrsIngestSrsOutput::connect_app(string ep_server, string ep_port)
     }
     
     // notify server the edge identity,
-    // @see https://github.com/winlinvip/simple-rtmp-server/issues/147
+    // @see https://github.com/simple-rtmp-server/srs/issues/147
     SrsAmf0Object* data = req->args;
     data->set("srs_sig", SrsAmf0Any::str(RTMP_SIG_SRS_KEY));
     data->set("srs_server", SrsAmf0Any::str(RTMP_SIG_SRS_KEY" "RTMP_SIG_SRS_VERSION" ("RTMP_SIG_SRS_URL_SHORT")"));
@@ -1306,7 +1308,7 @@ int SrsIngestSrsOutput::connect_app(string ep_server, string ep_port)
     std::string tc_url = srs_generate_tc_url(ep_server, req->vhost, req->app, ep_port, param);
     
     // upnode server identity will show in the connect_app of client.
-    // @see https://github.com/winlinvip/simple-rtmp-server/issues/160
+    // @see https://github.com/simple-rtmp-server/srs/issues/160
     // the debug_srs_upnode is config in vhost and default to true.
     bool debug_srs_upnode = true;
     if ((ret = client->connect_app(req->app, tc_url, req, debug_srs_upnode)) != ERROR_SUCCESS) {
@@ -1376,7 +1378,7 @@ int proxy_hls2rtmp(string hls, string rtmp)
     int ret = ERROR_SUCCESS;
     
     // init st.
-    if ((ret = srs_init_st()) != ERROR_SUCCESS) {
+    if ((ret = srs_st_init()) != ERROR_SUCCESS) {
         srs_error("init st failed. ret=%d", ret);
         return ret;
     }
@@ -1401,4 +1403,16 @@ int proxy_hls2rtmp(string hls, string rtmp)
     
     return ret;
 }
+
+#else
+
+int main(int argc, char** argv)
+{
+#ifndef SRS_AUTO_HTTP_CORE
+    srs_error("ingest requires http-api or http-server");
+#endif
+    return -1;
+}
+
+#endif
 

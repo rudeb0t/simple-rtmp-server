@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 winlin
+Copyright (c) 2013-2015 SRS(simple-rtmp-server)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -96,7 +96,7 @@ void show_macro_features()
     srs_warn("check feature http server: off");
 #endif
 
-#ifdef SRS_AUTO_HTTP_PARSER
+#ifdef SRS_AUTO_HTTP_CORE
     srs_trace("check feature http parser: on");
 #else
     srs_warn("check feature http parser: off");
@@ -344,15 +344,15 @@ int run_master()
 {
     int ret = ERROR_SUCCESS;
     
+    if ((ret = _srs_server->initialize_st()) != ERROR_SUCCESS) {
+        return ret;
+    }
+    
     if ((ret = _srs_server->initialize_signal()) != ERROR_SUCCESS) {
         return ret;
     }
     
     if ((ret = _srs_server->acquire_pid_file()) != ERROR_SUCCESS) {
-        return ret;
-    }
-    
-    if ((ret = _srs_server->initialize_st()) != ERROR_SUCCESS) {
         return ret;
     }
     

@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 winlin
+Copyright (c) 2013-2015 SRS(simple-rtmp-server)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -38,7 +38,7 @@ using namespace std;
 #include <srs_app_pithy_print.hpp>
 #include <srs_rtmp_sdk.hpp>
 #include <srs_rtmp_utility.hpp>
-#include <srs_app_kbps.hpp>
+#include <srs_protocol_kbps.hpp>
 #include <srs_rtmp_msg_array.hpp>
 #include <srs_app_utility.hpp>
 #include <srs_rtmp_amf0.hpp>
@@ -59,7 +59,7 @@ SrsForwarder::SrsForwarder(SrsSource* _source)
     kbps = new SrsKbps();
     stream_id = 0;
 
-    pthread = new SrsThread("forward", this, SRS_FORWARDER_SLEEP_US, true);
+    pthread = new SrsReusableThread2("forward", this, SRS_FORWARDER_SLEEP_US);
     queue = new SrsMessageQueue();
     jitter = new SrsRtmpJitter();
     
@@ -340,7 +340,7 @@ int SrsForwarder::connect_app(string ep_server, string ep_port)
     }
     
     // notify server the edge identity,
-    // @see https://github.com/winlinvip/simple-rtmp-server/issues/147
+    // @see https://github.com/simple-rtmp-server/srs/issues/147
     SrsAmf0Object* data = req->args;
     data->set("srs_sig", SrsAmf0Any::str(RTMP_SIG_SRS_KEY));
     data->set("srs_server", SrsAmf0Any::str(RTMP_SIG_SRS_SERVER));
@@ -368,7 +368,7 @@ int SrsForwarder::connect_app(string ep_server, string ep_port)
     std::string tc_url = srs_generate_tc_url(ep_server, req->vhost, req->app, ep_port, param);
     
     // upnode server identity will show in the connect_app of client.
-    // @see https://github.com/winlinvip/simple-rtmp-server/issues/160
+    // @see https://github.com/simple-rtmp-server/srs/issues/160
     // the debug_srs_upnode is config in vhost and default to true.
     bool debug_srs_upnode = _srs_config->get_debug_srs_upnode(req->vhost);
     if ((ret = client->connect_app(req->app, tc_url, req, debug_srs_upnode)) != ERROR_SUCCESS) {
@@ -407,7 +407,7 @@ int SrsForwarder::forward()
         }
     }
     
-    while (pthread->can_loop()) {
+    while (!pthread->interrupted()) {
         pprint->elapse();
 
         // read from client.

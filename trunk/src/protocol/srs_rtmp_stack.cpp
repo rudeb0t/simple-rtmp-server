@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 winlin
+Copyright (c) 2013-2015 SRS(simple-rtmp-server)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -28,10 +28,10 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <srs_kernel_stream.hpp>
 #include <srs_core_autofree.hpp>
 #include <srs_kernel_utility.hpp>
-#include <srs_rtmp_buffer.hpp>
+#include <srs_protocol_buffer.hpp>
 #include <srs_rtmp_utility.hpp>
 
-// for srs-librtmp, @see https://github.com/winlinvip/simple-rtmp-server/issues/213
+// for srs-librtmp, @see https://github.com/simple-rtmp-server/srs/issues/213
 #ifndef _WIN32
 #include <unistd.h>
 #endif
@@ -42,89 +42,6 @@ using namespace std;
 // when got a messae header, there must be some data,
 // increase recv timeout to got an entire message.
 #define SRS_MIN_RECV_TIMEOUT_US (int64_t)(60*1000*1000LL)
-
-/****************************************************************************
-*****************************************************************************
-****************************************************************************/
-/**
-5. Protocol Control Messages
-RTMP reserves message type IDs 1-7 for protocol control messages.
-These messages contain information needed by the RTM Chunk Stream
-protocol or RTMP itself. Protocol messages with IDs 1 & 2 are
-reserved for usage with RTM Chunk Stream protocol. Protocol messages
-with IDs 3-6 are reserved for usage of RTMP. Protocol message with ID
-7 is used between edge server and origin server.
-*/
-#define RTMP_MSG_SetChunkSize                   0x01
-#define RTMP_MSG_AbortMessage                   0x02
-#define RTMP_MSG_Acknowledgement                0x03
-#define RTMP_MSG_UserControlMessage             0x04
-#define RTMP_MSG_WindowAcknowledgementSize      0x05
-#define RTMP_MSG_SetPeerBandwidth               0x06
-#define RTMP_MSG_EdgeAndOriginServerCommand     0x07
-/**
-3. Types of messages
-The server and the client send messages over the network to
-communicate with each other. The messages can be of any type which
-includes audio messages, video messages, command messages, shared
-object messages, data messages, and user control messages.
-3.1. Command message
-Command messages carry the AMF-encoded commands between the client
-and the server. These messages have been assigned message type value
-of 20 for AMF0 encoding and message type value of 17 for AMF3
-encoding. These messages are sent to perform some operations like
-connect, createStream, publish, play, pause on the peer. Command
-messages like onstatus, result etc. are used to inform the sender
-about the status of the requested commands. A command message
-consists of command name, transaction ID, and command object that
-contains related parameters. A client or a server can request Remote
-Procedure Calls (RPC) over streams that are communicated using the
-command messages to the peer.
-*/
-#define RTMP_MSG_AMF3CommandMessage             17 // 0x11
-#define RTMP_MSG_AMF0CommandMessage             20 // 0x14
-/**
-3.2. Data message
-The client or the server sends this message to send Metadata or any
-user data to the peer. Metadata includes details about the
-data(audio, video etc.) like creation time, duration, theme and so
-on. These messages have been assigned message type value of 18 for
-AMF0 and message type value of 15 for AMF3.        
-*/
-#define RTMP_MSG_AMF0DataMessage                18 // 0x12
-#define RTMP_MSG_AMF3DataMessage                15 // 0x0F
-/**
-3.3. Shared object message
-A shared object is a Flash object (a collection of name value pairs)
-that are in synchronization across multiple clients, instances, and
-so on. The message types kMsgContainer=19 for AMF0 and
-kMsgContainerEx=16 for AMF3 are reserved for shared object events.
-Each message can contain multiple events.
-*/
-#define RTMP_MSG_AMF3SharedObject               16 // 0x10
-#define RTMP_MSG_AMF0SharedObject               19 // 0x13
-/**
-3.4. Audio message
-The client or the server sends this message to send audio data to the
-peer. The message type value of 8 is reserved for audio messages.
-*/
-#define RTMP_MSG_AudioMessage                   8 // 0x08
-/* *
-3.5. Video message
-The client or the server sends this message to send video data to the
-peer. The message type value of 9 is reserved for video messages.
-These messages are large and can delay the sending of other type of
-messages. To avoid such a situation, the video message is assigned
-the lowest priority.
-*/
-#define RTMP_MSG_VideoMessage                   9 // 0x09
-/**
-3.6. Aggregate message
-An aggregate message is a single message that contains a list of submessages.
-The message type value of 22 is reserved for aggregate
-messages.
-*/
-#define RTMP_MSG_AggregateMessage               22 // 0x16
 
 /****************************************************************************
 *****************************************************************************
@@ -173,24 +90,6 @@ messages.
 *****************************************************************************
 ****************************************************************************/
 /**
-* amf0 command message, command name macros
-*/
-#define RTMP_AMF0_COMMAND_CONNECT               "connect"
-#define RTMP_AMF0_COMMAND_CREATE_STREAM         "createStream"
-#define RTMP_AMF0_COMMAND_CLOSE_STREAM          "closeStream"
-#define RTMP_AMF0_COMMAND_PLAY                  "play"
-#define RTMP_AMF0_COMMAND_PAUSE                 "pause"
-#define RTMP_AMF0_COMMAND_ON_BW_DONE            "onBWDone"
-#define RTMP_AMF0_COMMAND_ON_STATUS             "onStatus"
-#define RTMP_AMF0_COMMAND_RESULT                "_result"
-#define RTMP_AMF0_COMMAND_ERROR                 "_error"
-#define RTMP_AMF0_COMMAND_RELEASE_STREAM        "releaseStream"
-#define RTMP_AMF0_COMMAND_FC_PUBLISH            "FCPublish"
-#define RTMP_AMF0_COMMAND_UNPUBLISH             "FCUnpublish"
-#define RTMP_AMF0_COMMAND_PUBLISH               "publish"
-#define RTMP_AMF0_DATA_SAMPLE_ACCESS            "|RtmpSampleAccess"
-
-/**
 * band width check method name, which will be invoked by client.
 * band width check mothods use SrsBandwidthPacket as its internal packet type,
 * so ensure you set command name when you use it.
@@ -221,318 +120,6 @@ messages.
 /****************************************************************************
 *****************************************************************************
 ****************************************************************************/
-/**
-* the chunk stream id used for some under-layer message,
-* for example, the PC(protocol control) message.
-*/
-#define RTMP_CID_ProtocolControl                0x02
-/**
-* the AMF0/AMF3 command message, invoke method and return the result, over NetConnection.
-* generally use 0x03.
-*/
-#define RTMP_CID_OverConnection                 0x03
-/**
-* the AMF0/AMF3 command message, invoke method and return the result, over NetConnection, 
-* the midst state(we guess).
-* rarely used, e.g. onStatus(NetStream.Play.Reset).
-*/
-#define RTMP_CID_OverConnection2                0x04
-/**
-* the stream message(amf0/amf3), over NetStream.
-* generally use 0x05.
-*/
-#define RTMP_CID_OverStream                     0x05
-/**
-* the stream message(amf0/amf3), over NetStream, the midst state(we guess).
-* rarely used, e.g. play("mp4:mystram.f4v")
-*/
-#define RTMP_CID_OverStream2                    0x08
-/**
-* the stream message(video), over NetStream
-* generally use 0x06.
-*/
-#define RTMP_CID_Video                          0x06
-/**
-* the stream message(audio), over NetStream.
-* generally use 0x07.
-*/
-#define RTMP_CID_Audio                          0x07
-
-/****************************************************************************
-*****************************************************************************
-****************************************************************************/
-
-SrsMessageHeader::SrsMessageHeader()
-{
-    message_type = 0;
-    payload_length = 0;
-    timestamp_delta = 0;
-    stream_id = 0;
-    
-    timestamp = 0;
-    // we always use the connection chunk-id
-    perfer_cid = RTMP_CID_OverConnection;
-}
-
-SrsMessageHeader::~SrsMessageHeader()
-{
-}
-
-bool SrsMessageHeader::is_audio()
-{
-    return message_type == RTMP_MSG_AudioMessage;
-}
-
-bool SrsMessageHeader::is_video()
-{
-    return message_type == RTMP_MSG_VideoMessage;
-}
-
-bool SrsMessageHeader::is_amf0_command()
-{
-    return message_type == RTMP_MSG_AMF0CommandMessage;
-}
-
-bool SrsMessageHeader::is_amf0_data()
-{
-    return message_type == RTMP_MSG_AMF0DataMessage;
-}
-
-bool SrsMessageHeader::is_amf3_command()
-{
-    return message_type == RTMP_MSG_AMF3CommandMessage;
-}
-
-bool SrsMessageHeader::is_amf3_data()
-{
-    return message_type == RTMP_MSG_AMF3DataMessage;
-}
-
-bool SrsMessageHeader::is_window_ackledgement_size()
-{
-    return message_type == RTMP_MSG_WindowAcknowledgementSize;
-}
-
-bool SrsMessageHeader::is_ackledgement()
-{
-    return message_type == RTMP_MSG_Acknowledgement;
-}
-
-bool SrsMessageHeader::is_set_chunk_size()
-{
-    return message_type == RTMP_MSG_SetChunkSize;
-}
-
-bool SrsMessageHeader::is_user_control_message()
-{
-    return message_type == RTMP_MSG_UserControlMessage;
-}
-
-bool SrsMessageHeader::is_set_peer_bandwidth()
-{
-    return message_type == RTMP_MSG_SetPeerBandwidth;
-}
-
-bool SrsMessageHeader::is_aggregate()
-{
-    return message_type == RTMP_MSG_AggregateMessage;
-}
-
-void SrsMessageHeader::initialize_amf0_script(int size, int stream)
-{
-    message_type = RTMP_MSG_AMF0DataMessage;
-    payload_length = (int32_t)size;
-    timestamp_delta = (int32_t)0;
-    timestamp = (int64_t)0;
-    stream_id = (int32_t)stream;
-    
-    // amf0 script use connection2 chunk-id
-    perfer_cid = RTMP_CID_OverConnection2;
-}
-
-void SrsMessageHeader::initialize_audio(int size, u_int32_t time, int stream)
-{
-    message_type = RTMP_MSG_AudioMessage;
-    payload_length = (int32_t)size;
-    timestamp_delta = (int32_t)time;
-    timestamp = (int64_t)time;
-    stream_id = (int32_t)stream;
-    
-    // audio chunk-id
-    perfer_cid = RTMP_CID_Audio;
-}
-
-void SrsMessageHeader::initialize_video(int size, u_int32_t time, int stream)
-{
-    message_type = RTMP_MSG_VideoMessage;
-    payload_length = (int32_t)size;
-    timestamp_delta = (int32_t)time;
-    timestamp = (int64_t)time;
-    stream_id = (int32_t)stream;
-    
-    // video chunk-id
-    perfer_cid = RTMP_CID_Video;
-}
-
-SrsCommonMessage::SrsCommonMessage()
-{
-    payload = NULL;
-    size = 0;
-}
-
-SrsCommonMessage::~SrsCommonMessage()
-{
-    srs_freep(payload);
-}
-
-SrsSharedPtrMessage::SrsSharedPtrPayload::SrsSharedPtrPayload()
-{
-    payload = NULL;
-    size = 0;
-    shared_count = 0;
-}
-
-SrsSharedPtrMessage::SrsSharedPtrPayload::~SrsSharedPtrPayload()
-{
-    srs_freep(payload);
-}
-
-SrsSharedPtrMessage::SrsSharedPtrMessage()
-{
-    ptr = NULL;
-}
-
-SrsSharedPtrMessage::~SrsSharedPtrMessage()
-{
-    if (ptr) {
-        if (ptr->shared_count == 0) {
-            srs_freep(ptr);
-        } else {
-            ptr->shared_count--;
-        }
-    }
-}
-
-int SrsSharedPtrMessage::create(SrsCommonMessage* msg)
-{
-    int ret = ERROR_SUCCESS;
-
-    if ((ret = create(&msg->header, msg->payload, msg->size)) != ERROR_SUCCESS) {
-        return ret;
-    }
-
-    // to prevent double free of payload:
-    // initialize already attach the payload of msg,
-    // detach the payload to transfer the owner to shared ptr.
-    msg->payload = NULL;
-    msg->size = 0;
-
-    return ret;
-}
-
-int SrsSharedPtrMessage::create(SrsMessageHeader* pheader, char* payload, int size)
-{
-    int ret = ERROR_SUCCESS;
-
-    if (ptr) {
-        ret = ERROR_SYSTEM_ASSERT_FAILED;
-        srs_error("should not set the payload twice. ret=%d", ret);
-        srs_assert(false);
-
-        return ret;
-    }
-
-    ptr = new SrsSharedPtrPayload();
-
-    // direct attach the data.
-    if (pheader) {
-        ptr->header.message_type = pheader->message_type;
-        ptr->header.payload_length = size;
-        ptr->header.perfer_cid = pheader->perfer_cid;
-        this->timestamp = pheader->timestamp;
-        this->stream_id = pheader->stream_id;
-    }
-    ptr->payload = payload;
-    ptr->size = size;
-
-    // message can access it.
-    this->payload = ptr->payload;
-    this->size = ptr->size;
-
-    return ret;
-}
-
-int SrsSharedPtrMessage::count()
-{
-    srs_assert(ptr);
-    return ptr->shared_count;
-}
-
-bool SrsSharedPtrMessage::check(int stream_id)
-{
-    // we donot use the complex basic header,
-    // ensure the basic header is 1bytes.
-    if (ptr->header.perfer_cid < 2) {
-        srs_info("change the chunk_id=%d to default=%d", 
-            ptr->header.perfer_cid, RTMP_CID_ProtocolControl);
-        ptr->header.perfer_cid = RTMP_CID_ProtocolControl;
-    }
-    
-    // we assume that the stream_id in a group must be the same.
-    if (this->stream_id == stream_id) {
-        return true;
-    }
-    this->stream_id = stream_id;
-    
-    return false;
-}
-
-bool SrsSharedPtrMessage::is_av()
-{
-    return ptr->header.message_type == RTMP_MSG_AudioMessage 
-        || ptr->header.message_type == RTMP_MSG_VideoMessage;
-}
-
-bool SrsSharedPtrMessage::is_audio()
-{
-    return ptr->header.message_type == RTMP_MSG_AudioMessage;
-}
-
-bool SrsSharedPtrMessage::is_video()
-{
-    return ptr->header.message_type == RTMP_MSG_VideoMessage;
-}
-
-int SrsSharedPtrMessage::chunk_header(char* cache, int nb_cache, bool c0)
-{
-    if (c0) {
-        return srs_chunk_header_c0(
-            ptr->header.perfer_cid, timestamp, ptr->header.payload_length,
-            ptr->header.message_type, stream_id,
-            cache, nb_cache);
-    } else {
-        return srs_chunk_header_c3(
-            ptr->header.perfer_cid, timestamp,
-            cache, nb_cache);
-    }
-}
-
-SrsSharedPtrMessage* SrsSharedPtrMessage::copy()
-{
-    srs_assert(ptr);
-
-    SrsSharedPtrMessage* copy = new SrsSharedPtrMessage();
-
-    copy->ptr = ptr;
-    ptr->shared_count++;
-
-    copy->timestamp = timestamp;
-    copy->stream_id = stream_id;
-    copy->payload = ptr->payload;
-    copy->size = ptr->size;
-
-    return copy;
-}
 
 SrsPacket::SrsPacket()
 {
@@ -1005,41 +592,7 @@ int SrsProtocol::do_send_messages(SrsSharedPtrMessage** msgs, int nb_msgs)
 
 int SrsProtocol::do_iovs_send(iovec* iovs, int size)
 {
-    int ret = ERROR_SUCCESS;
-
-    // the limits of writev iovs.
-    // for srs-librtmp, @see https://github.com/winlinvip/simple-rtmp-server/issues/213
-#ifndef _WIN32
-    static int limits = sysconf(_SC_IOV_MAX);
-#else
-    static int limits = 1024;
-#endif
-    
-    // send in a time.
-    if (size < limits) {
-        if ((ret = skt->writev(iovs, size, NULL)) != ERROR_SUCCESS) {
-            if (!srs_is_client_gracefully_close(ret)) {
-                srs_error("send with writev failed. ret=%d", ret);
-            }
-            return ret;
-        }
-        return ret;
-    }
-    
-    // send in multiple times.
-    int cur_iov = 0;
-    while (cur_iov < size) {
-        int cur_count = srs_min(limits, size - cur_iov);
-        if ((ret = skt->writev(iovs + cur_iov, cur_count, NULL)) != ERROR_SUCCESS) {
-            if (!srs_is_client_gracefully_close(ret)) {
-                srs_error("send with writev failed. ret=%d", ret);
-            }
-            return ret;
-        }
-        cur_iov += cur_count;
-    }
-    
-    return ret;
+    return srs_write_large_iovs(skt, iovs, size);
 }
 
 int SrsProtocol::do_send_and_free_packet(SrsPacket* packet, int stream_id)
@@ -1375,7 +928,7 @@ int SrsProtocol::recv_interlaced_message(SrsCommonMessage** pmsg)
     SrsChunkStream* chunk = NULL;
     
     // use chunk stream cache to get the chunk info.
-    // @see https://github.com/winlinvip/simple-rtmp-server/issues/249
+    // @see https://github.com/simple-rtmp-server/srs/issues/249
     if (cid < SRS_PERF_CHUNK_STREAM_CACHE) {
         // chunk stream cache hit.
         srs_verbose("cs-cache hit, cid=%d", cid);
@@ -1408,8 +961,8 @@ int SrsProtocol::recv_interlaced_message(SrsCommonMessage** pmsg)
         return ret;
     }
     srs_verbose("read message header success. "
-            "fmt=%d, mh_size=%d, ext_time=%d, size=%d, message(type=%d, size=%d, time=%"PRId64", sid=%d)", 
-            fmt, mh_size, chunk->extended_timestamp, (chunk->msg? chunk->msg->size : 0), chunk->header.message_type, 
+            "fmt=%d, ext_time=%d, size=%d, message(type=%d, size=%d, time=%"PRId64", sid=%d)", 
+            fmt, chunk->extended_timestamp, (chunk->msg? chunk->msg->size : 0), chunk->header.message_type, 
             chunk->header.payload_length, chunk->header.timestamp, chunk->header.stream_id);
     
     // read msg payload from chunk stream.
@@ -1445,7 +998,7 @@ int SrsProtocol::recv_interlaced_message(SrsCommonMessage** pmsg)
 * Header field may be 1, 2, or 3 bytes, depending on the chunk stream
 * ID.
 * 
-* The bits 0–5 (least significant) in the chunk basic header represent
+* The bits 0-5 (least significant) in the chunk basic header represent
 * the chunk stream ID.
 *
 * Chunk stream IDs 2-63 can be encoded in the 1-byte version of this
@@ -1586,7 +1139,7 @@ int SrsProtocol::read_message_header(SrsChunkStream* chunk, char fmt)
         // 0x04             where: message_type=4(protocol control user-control message)
         // 0x00 0x06            where: event Ping(0x06)
         // 0x00 0x00 0x0d 0x0f  where: event data 4bytes ping timestamp.
-        // @see: https://github.com/winlinvip/simple-rtmp-server/issues/98
+        // @see: https://github.com/simple-rtmp-server/srs/issues/98
         if (chunk->cid == RTMP_CID_ProtocolControl && fmt == RTMP_FMT_TYPE1) {
             srs_warn("accept cid=2, fmt=1 to make librtmp happy.");
         } else {
@@ -1651,14 +1204,14 @@ int SrsProtocol::read_message_header(SrsChunkStream* chunk, char fmt)
         // timestamp: 3 bytes
         // If the timestamp is greater than or equal to 16777215
         // (hexadecimal 0x00ffffff), this value MUST be 16777215, and the
-        // ‘extended timestamp header’ MUST be present. Otherwise, this value
+        // 'extended timestamp header' MUST be present. Otherwise, this value
         // SHOULD be the entire timestamp.
         //
         // fmt: 1 or 2
         // timestamp delta: 3 bytes
         // If the delta is greater than or equal to 16777215 (hexadecimal
-        // 0x00ffffff), this value MUST be 16777215, and the ‘extended
-        // timestamp header’ MUST be present. Otherwise, this value SHOULD be
+        // 0x00ffffff), this value MUST be 16777215, and the 'extended
+        // timestamp header' MUST be present. Otherwise, this value SHOULD be
         // the entire delta.
         chunk->extended_timestamp = (chunk->header.timestamp_delta >= RTMP_EXTENDED_TIMESTAMP);
         if (!chunk->extended_timestamp) {
@@ -1756,7 +1309,7 @@ int SrsProtocol::read_message_header(SrsChunkStream* chunk, char fmt)
         pp[0] = *p++;
 
         // always use 31bits timestamp, for some server may use 32bits extended timestamp.
-        // @see https://github.com/winlinvip/simple-rtmp-server/issues/111
+        // @see https://github.com/simple-rtmp-server/srs/issues/111
         timestamp &= 0x7fffffff;
         
         /**
@@ -1947,12 +1500,12 @@ int SrsProtocol::on_recv_message(SrsCommonMessage* msg)
 
             // for some server, the actual chunk size can greater than the max value(65536),
             // so we just warning the invalid chunk size, and actually use it is ok,
-            // @see: https://github.com/winlinvip/simple-rtmp-server/issues/160
+            // @see: https://github.com/simple-rtmp-server/srs/issues/160
             if (pkt->chunk_size < SRS_CONSTS_RTMP_MIN_CHUNK_SIZE 
                 || pkt->chunk_size > SRS_CONSTS_RTMP_MAX_CHUNK_SIZE) 
             {
                 srs_warn("accept chunk size %d, but should in [%d, %d], "
-                    "@see: https://github.com/winlinvip/simple-rtmp-server/issues/160",
+                    "@see: https://github.com/simple-rtmp-server/srs/issues/160",
                     pkt->chunk_size, SRS_CONSTS_RTMP_MIN_CHUNK_SIZE, 
                     SRS_CONSTS_RTMP_MAX_CHUNK_SIZE);
             }
@@ -2150,7 +1703,7 @@ int SrsConnectAppPacket::decode(SrsStream* stream)
     if (!stream->empty()) {
         srs_freep(args);
         
-        // see: https://github.com/winlinvip/simple-rtmp-server/issues/186
+        // see: https://github.com/simple-rtmp-server/srs/issues/186
         // the args maybe any amf0, for instance, a string. we should drop if not object.
         SrsAmf0Any* any = NULL;
         if ((ret = SrsAmf0Any::discovery(stream, &any)) != ERROR_SUCCESS) {

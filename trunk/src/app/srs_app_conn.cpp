@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 winlin
+Copyright (c) 2013-2015 SRS(simple-rtmp-server)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -25,25 +25,37 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include <srs_kernel_log.hpp>
 #include <srs_kernel_error.hpp>
-#include <srs_app_server.hpp>
 #include <srs_app_utility.hpp>
 
-SrsConnection::SrsConnection(SrsServer* srs_server, st_netfd_t client_stfd)
+IConnectionManager::IConnectionManager()
+{
+}
+
+IConnectionManager::~IConnectionManager()
+{
+}
+
+SrsConnection::SrsConnection(IConnectionManager* cm, st_netfd_t c)
 {
     id = 0;
-    server = srs_server;
-    stfd = client_stfd;
+    manager = cm;
+    stfd = c;
     
     // the client thread should reap itself, 
     // so we never use joinable.
     // TODO: FIXME: maybe other thread need to stop it.
-    // @see: https://github.com/winlinvip/simple-rtmp-server/issues/78
-    pthread = new SrsThread("conn", this, 0, false);
+    // @see: https://github.com/simple-rtmp-server/srs/issues/78
+    pthread = new SrsOneCycleThread("conn", this);
 }
 
 SrsConnection::~SrsConnection()
 {
-    stop();
+    /**
+     * when delete the connection, stop the connection,
+     * close the underlayer socket, delete the thread.
+     */
+    srs_close_stfd(stfd);
+    srs_freep(pthread);
 }
 
 int SrsConnection::start()
@@ -76,9 +88,6 @@ int SrsConnection::cycle()
     if (ret == ERROR_SOCKET_CLOSED) {
         srs_warn("client disconnect peer. ret=%d", ret);
     }
-    
-    // set loop to stop to quit.
-    pthread->stop_loop();
 
     return ERROR_SUCCESS;
 }
@@ -86,18 +95,12 @@ int SrsConnection::cycle()
 void SrsConnection::on_thread_stop()
 {
     // TODO: FIXME: never remove itself, use isolate thread to do cleanup.
-    server->remove(this);
+    manager->remove(this);
 }
 
 int SrsConnection::srs_id()
 {
     return id;
-}
-
-void SrsConnection::stop()
-{
-    srs_close_stfd(stfd);
-    srs_freep(pthread);
 }
 
 

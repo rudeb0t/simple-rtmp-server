@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 winlin
+Copyright (c) 2013-2015 SRS(simple-rtmp-server)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -49,7 +49,7 @@ using namespace std;
 
 using namespace _srs_internal;
 
-#define SRS_WIKI_URL_LOG "https://github.com/winlinvip/simple-rtmp-server/wiki/v1_CN_SrsLog"
+#define SRS_WIKI_URL_LOG "https://github.com/simple-rtmp-server/srs/wiki/v1_CN_SrsLog"
 
 // when user config an invalid value, macros to perfer true or false.
 #define SRS_CONF_PERFER_FALSE(conf_arg) conf_arg == "on"
@@ -364,6 +364,8 @@ int SrsConfDirective::read_token(SrsConfigBuffer* buffer, vector<string>& args, 
 
 SrsConfig::SrsConfig()
 {
+    dolphin = false;
+    
     show_help = false;
     show_version = false;
     test_conf = false;
@@ -376,6 +378,29 @@ SrsConfig::SrsConfig()
 SrsConfig::~SrsConfig()
 {
     srs_freep(root);
+}
+
+bool SrsConfig::is_dolphin()
+{
+    return dolphin;
+}
+
+void SrsConfig::set_config_directive(SrsConfDirective* parent, string dir, string value)
+{
+    SrsConfDirective* d = parent->get(dir);
+    
+    if (!d) {
+        d = new SrsConfDirective();
+        if (!dir.empty()) {
+            d->name = dir;
+        }
+        parent->directives.push_back(d);
+    }
+    
+    d->args.clear();
+    if (!value.empty()) {
+        d->args.push_back(value);
+    }
 }
 
 void SrsConfig::subscribe(ISrsReloadHandler* handler)
@@ -441,10 +466,22 @@ int SrsConfig::reload_conf(SrsConfig* conf)
     //      daemon
     //
     // always support reload without additional code:
-    //      chunk_size, ff_log_dir, max_connections,
+    //      chunk_size, ff_log_dir,
     //      bandcheck, http_hooks, heartbeat, 
     //      token_traverse, debug_srs_upnode,
     //      security
+    
+    // merge config: max_connections
+    if (!srs_directive_equals(root->get("max_connections"), old_root->get("max_connections"))) {
+        for (it = subscribes.begin(); it != subscribes.end(); ++it) {
+            ISrsReloadHandler* subscribe = *it;
+            if ((ret = subscribe->on_reload_max_conns()) != ERROR_SUCCESS) {
+                srs_error("notify subscribes reload max_connections failed. ret=%d", ret);
+                return ret;
+            }
+        }
+        srs_trace("reload max_connections success.");
+    }
 
     // merge config: listen
     if (!srs_directive_equals(root->get("listen"), old_root->get("listen"))) {
@@ -1248,6 +1285,32 @@ int SrsConfig::parse_argv(int& i, char** argv)
                 show_help = false;
                 test_conf = true;
                 break;
+            case 'p':
+                dolphin = true;
+                if (*p) {
+                    dolphin_rtmp_port = p;
+                    continue;
+                }
+                if (argv[++i]) {
+                    dolphin_rtmp_port = argv[i];
+                    continue;
+                }
+                ret = ERROR_SYSTEM_CONFIG_INVALID;
+                srs_error("option \"-p\" requires params, ret=%d", ret);
+                return ret;
+            case 'x':
+                dolphin = true;
+                if (*p) {
+                    dolphin_http_port = p;
+                    continue;
+                }
+                if (argv[++i]) {
+                    dolphin_http_port = argv[i];
+                    continue;
+                }
+                ret = ERROR_SYSTEM_CONFIG_INVALID;
+                srs_error("option \"-x\" requires params, ret=%d", ret);
+                return ret;
             case 'v':
             case 'V':
                 show_help = false;
@@ -1257,11 +1320,11 @@ int SrsConfig::parse_argv(int& i, char** argv)
                 show_help = false;
                 if (*p) {
                     config_file = p;
-                    return ret;
+                    continue;
                 }
                 if (argv[++i]) {
                     config_file = argv[i];
-                    return ret;
+                    continue;
                 }
                 ret = ERROR_SYSTEM_CONFIG_INVALID;
                 srs_error("option \"-c\" requires parameter, ret=%d", ret);
@@ -1292,6 +1355,9 @@ void SrsConfig::print_help(char** argv)
         "   -v, -V              : show version and exit(0)\n"
         "   -t                  : test configuration file, exit(error_code).\n"
         "   -c filename         : use configuration file for SRS\n"
+        "For srs-dolphin:\n"
+        "   -p  rtmp-port       : the rtmp port to listen.\n"
+        "   -x  http-port       : the http port to listen.\n"
         "\n"
         RTMP_SIG_SRS_WEB"\n"
         RTMP_SIG_SRS_URL"\n"
@@ -1498,7 +1564,8 @@ int SrsConfig::check_config()
                     string m = conf->at(j)->name.c_str();
                     if (m != "enabled" && m != "hls_entry_prefix" && m != "hls_path" && m != "hls_fragment" && m != "hls_window" && m != "hls_on_error"
                         && m != "hls_storage" && m != "hls_mount" && m != "hls_td_ratio" && m != "hls_aof_ratio" && m != "hls_acodec" && m != "hls_vcodec"
-                        && m != "hls_m3u8_file" && m != "hls_ts_file" && m != "hls_ts_floor" && m != "hls_cleanup" && m != "hls_nb_notify" && m != "hls_wait_keyframe"
+                        && m != "hls_m3u8_file" && m != "hls_ts_file" && m != "hls_ts_floor" && m != "hls_cleanup" && m != "hls_nb_notify"
+                        && m != "hls_wait_keyframe" && m != "hls_dispose"
                     ) {
                         ret = ERROR_SYSTEM_CONFIG_INVALID;
                         srs_error("unsupported vhost hls directive %s, ret=%d", m.c_str(), ret);
@@ -1650,7 +1717,7 @@ int SrsConfig::check_config()
         int nb_canbe = max_open_files - nb_consumed_fds - 1;
 
         // for each play connections, we open a pipe(2fds) to convert SrsConsumver to io,
-        // refine performance, @see: https://github.com/winlinvip/simple-rtmp-server/issues/194
+        // refine performance, @see: https://github.com/simple-rtmp-server/srs/issues/194
         if (nb_total >= max_open_files) {
             ret = ERROR_SYSTEM_CONFIG_INVALID;
             srs_error("invalid max_connections=%d, required=%d, system limit to %d, "
@@ -1831,6 +1898,23 @@ int SrsConfig::parse_buffer(SrsConfigBuffer* buffer)
     
     if ((ret = root->parse(buffer)) != ERROR_SUCCESS) {
         return ret;
+    }
+    
+    // mock by dolphin mode.
+    // for the dolphin will start srs with specified params.
+    if (dolphin) {
+        // for RTMP.
+        set_config_directive(root, "listen", dolphin_rtmp_port);
+        
+        // for HTTP
+        set_config_directive(root, "http_server", "");
+        SrsConfDirective* http_server = root->get("http_server");
+        set_config_directive(http_server, "enabled", "on");
+        set_config_directive(http_server, "listen", dolphin_http_port);
+        
+        // others.
+        set_config_directive(root, "daemon", "off");
+        set_config_directive(root, "srs_log_tank", "console");
     }
 
     return ret;
@@ -2570,7 +2654,7 @@ bool SrsConfig::get_vhost_is_edge(SrsConfDirective* vhost)
         return SRS_CONF_DEFAULT_EDGE_MODE;
     }
     
-    return conf->arg0() == "remote";
+    return "remote" == conf->arg0();
 }
 
 SrsConfDirective* SrsConfig::get_vhost_edge_origin(string vhost)
@@ -3476,6 +3560,24 @@ bool SrsConfig::get_hls_cleanup(string vhost)
     }
     
     return SRS_CONF_PERFER_TRUE(conf->arg0());
+}
+
+int SrsConfig::get_hls_dispose(string vhost)
+{
+    SrsConfDirective* conf = get_hls(vhost);
+    
+    int DEFAULT = 0;
+    
+    if (!conf) {
+        return DEFAULT;
+    }
+    
+    conf = conf->get("hls_dispose");
+    if (!conf || conf->arg0().empty()) {
+        return DEFAULT;
+    }
+    
+    return ::atoi(conf->arg0().c_str());
 }
 
 bool SrsConfig::get_hls_wait_keyframe(string vhost)

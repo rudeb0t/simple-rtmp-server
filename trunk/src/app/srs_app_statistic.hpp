@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 winlin
+Copyright (c) 2013-2015 SRS(simple-rtmp-server)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -35,6 +35,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include <srs_kernel_codec.hpp>
 
+#define STATISTIC_STREAM_STATUS_PUBLISHING    "publishing"
+#define STATISTIC_STREAM_STATUS_IDLING        "idling"
+
 class SrsKbps;
 class SrsRequest;
 class SrsConnection;
@@ -62,6 +65,7 @@ public:
     std::string app;
     std::string stream;
     std::string url;
+    std::string status;
 public:
     /**
     * stream total kbps.
@@ -90,6 +94,10 @@ public:
     SrsStatisticStream();
     virtual ~SrsStatisticStream();
 public:
+    /**
+    * publish the stream.
+    */
+    virtual void publish();
     /**
     * close the stream.
     */
@@ -137,6 +145,10 @@ public:
         SrsAacObjectType aac_object
     );
     /**
+    * when publish stream.
+    */
+    virtual void on_stream_publish(SrsRequest* req);
+    /**
     * when close stream.
     */
     virtual void on_stream_close(SrsRequest* req);
@@ -155,6 +167,7 @@ public:
     * sample the kbps, add delta bytes of conn.
     * use kbps_sample() to get all result of kbps stat.
     */
+    // TODO: FIXME: the add delta must use IKbpsDelta interface instead.
     virtual void kbps_add_delta(SrsConnection* conn);
     /**
     * calc the result for all kbps.

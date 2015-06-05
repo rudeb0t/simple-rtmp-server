@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 winlin
+Copyright (c) 2013-2015 SRS(simple-rtmp-server)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -21,7 +21,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-#include <srs_rtmp_buffer.hpp>
+#include <srs_protocol_buffer.hpp>
 
 #include <stdlib.h>
 
@@ -187,7 +187,7 @@ int SrsFastBuffer::grow(ISrsBufferReader* reader, int required_size)
         * to improve read performance, merge some packets then read,
         * when it on and read small bytes, we sleep to wait more data.,
         * that is, we merge some data to read together.
-        * @see https://github.com/winlinvip/simple-rtmp-server/issues/241
+        * @see https://github.com/simple-rtmp-server/srs/issues/241
         */
         if (merged_read && _handler) {
             _handler->on_read(nread);

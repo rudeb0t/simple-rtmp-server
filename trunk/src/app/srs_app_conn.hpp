@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 winlin
+Copyright (c) 2013-2015 SRS(simple-rtmp-server)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -34,32 +34,47 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include <srs_app_st.hpp>
 #include <srs_app_thread.hpp>
-#include <srs_app_kbps.hpp>
+#include <srs_protocol_kbps.hpp>
 
-class SrsServer;
+class SrsConnection;
+
+/**
+ * the manager for connection.
+ */
+class IConnectionManager
+{
+public:
+    IConnectionManager();
+    virtual ~IConnectionManager();
+public:
+    /**
+     * remove the specified connection.
+     */
+    virtual void remove(SrsConnection* c) = 0;
+};
 
 /**
 * the basic connection of SRS,
 * all connections accept from listener must extends from this base class,
 * server will add the connection to manager, and delete it when remove.
 */
-class SrsConnection : public virtual ISrsThreadHandler, public virtual IKbpsDelta
+class SrsConnection : public virtual ISrsOneCycleThreadHandler, public virtual IKbpsDelta
 {
 private:
     /**
     * each connection start a green thread,
     * when thread stop, the connection will be delete by server.
     */
-    SrsThread* pthread;
+    SrsOneCycleThread* pthread;
     /**
     * the id of connection.
     */
     int id;
 protected:
     /**
-    * the server object to manage the connection.
+    * the manager object to manage the connection.
     */
-    SrsServer* server;
+    IConnectionManager* manager;
     /**
     * the underlayer st fd handler.
     */
@@ -69,7 +84,7 @@ protected:
     */
     std::string ip;
 public:
-    SrsConnection(SrsServer* srs_server, st_netfd_t client_stfd);
+    SrsConnection(IConnectionManager* cm, st_netfd_t c);
     virtual ~SrsConnection();
 public:
     /**
@@ -82,6 +97,8 @@ public:
     * to remove the client by server->remove(this).
     */
     virtual int start();
+// interface ISrsOneCycleThreadHandler
+public:
     /**
     * the thread cycle function,
     * when serve connection completed, terminate the loop which will terminate the thread,
@@ -104,12 +121,6 @@ protected:
     * for concrete connection to do the cycle.
     */
     virtual int do_cycle() = 0;
-private:
-    /**
-    * when delete the connection, stop the connection,
-    * close the underlayer socket, delete the thread.
-    */
-    virtual void stop();
 };
 
 #endif

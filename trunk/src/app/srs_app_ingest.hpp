@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 winlin
+Copyright (c) 2013-2015 SRS(simple-rtmp-server)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -52,6 +52,9 @@ public:
     
     SrsIngesterFFMPEG(SrsFFMPEG* _ffmpeg, std::string _vhost, std::string _id);
     virtual ~SrsIngesterFFMPEG();
+    
+    // @see SrsFFMPEG.fast_stop().
+    virtual void fast_stop();
 };
 
 /**
@@ -59,20 +62,22 @@ public:
 * encode with FFMPEG(optional),
 * push to SRS(or any RTMP server) over RTMP.
 */
-class SrsIngester : public ISrsThreadHandler, public ISrsReloadHandler
+class SrsIngester : public ISrsReusableThreadHandler, public ISrsReloadHandler
 {
 private:
     std::vector<SrsIngesterFFMPEG*> ingesters;
 private:
-    SrsThread* pthread;
+    SrsReusableThread* pthread;
     SrsPithyPrint* pprint;
 public:
     SrsIngester();
     virtual ~SrsIngester();
 public:
+    virtual void dispose();
+public:
     virtual int start();
     virtual void stop();
-// interface ISrsThreadHandler.
+// interface ISrsReusableThreadHandler.
 public:
     virtual int cycle();
     virtual void on_thread_stop();

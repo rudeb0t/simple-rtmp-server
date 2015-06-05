@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 winlin
+Copyright (c) 2013-2015 SRS(simple-rtmp-server)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -34,7 +34,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include <srs_rtmp_sdk.hpp>
 #include <srs_rtmp_handshake.hpp>
-#include <srs_rtmp_buffer.hpp>
+#include <srs_protocol_buffer.hpp>
 
 #ifdef SRS_AUTO_SSL
 using namespace _srs_internal;

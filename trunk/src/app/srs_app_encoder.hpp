@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 winlin
+Copyright (c) 2013-2015 SRS(simple-rtmp-server)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -45,13 +45,13 @@ class SrsFFMPEG;
 * the encoder for a stream,
 * may use multiple ffmpegs to transcode the specified stream.
 */
-class SrsEncoder : public ISrsThreadHandler
+class SrsEncoder : public ISrsReusableThreadHandler
 {
 private:
     std::string input_stream_name;
     std::vector<SrsFFMPEG*> ffmpegs;
 private:
-    SrsThread* pthread;
+    SrsReusableThread* pthread;
     SrsPithyPrint* pprint;
 public:
     SrsEncoder();
@@ -59,7 +59,7 @@ public:
 public:
     virtual int on_publish(SrsRequest* req);
     virtual void on_unpublish();
-// interface ISrsThreadHandler.
+// interface ISrsReusableThreadHandler.
 public:
     virtual int cycle();
     virtual void on_thread_stop();

@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 winlin
+Copyright (c) 2013-2015 SRS(simple-rtmp-server)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -30,7 +30,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include <srs_core.hpp>
 
-// for srs-librtmp, @see https://github.com/winlinvip/simple-rtmp-server/issues/213
+// for srs-librtmp, @see https://github.com/simple-rtmp-server/srs/issues/213
 #ifndef _WIN32
 #define ERROR_SUCCESS                       0
 #endif
@@ -96,6 +96,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define ERROR_SYSTEM_TIME                   1055
 #define ERROR_SYSTEM_DIR_EXISTS             1056
 #define ERROR_SYSTEM_CREATE_DIR             1057
+#define ERROR_SYSTEM_KILL                   1058
 
 ///////////////////////////////////////////////////////
 // RTMP protocol error.
@@ -215,13 +216,13 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define ERROR_HTTP_DVR_CREATE_REQUEST       3053
 #define ERROR_HTTP_DVR_NO_TAEGET            3054
 #define ERROR_ADTS_ID_NOT_AAC               3055
-// HDS error code
 #define ERROR_HDS_OPEN_F4M_FAILED           3056
 #define ERROR_HDS_WRITE_F4M_FAILED          3057
 #define ERROR_HDS_OPEN_BOOTSTRAP_FAILED     3058
 #define ERROR_HDS_WRITE_BOOTSTRAP_FAILED    3059
 #define ERROR_HDS_OPEN_FRAGMENT_FAILED      3060
 #define ERROR_HDS_WRITE_FRAGMENT_FAILED     3061
+#define ERROR_HLS_NO_STREAM                 3062
 
 ///////////////////////////////////////////////////////
 // HTTP/StreamCaster protocol error.
@@ -255,6 +256,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define ERROR_HTTP_INVALID_CHUNK_HEADER     4026
 #define ERROR_AVC_NALU_UEV                  4027
 #define ERROR_AAC_BYTES_INVALID             4028
+#define ERROR_HTTP_REQUEST_EOF              4029
 
 ///////////////////////////////////////////////////////
 // user-define error.

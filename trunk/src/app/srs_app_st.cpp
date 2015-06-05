@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 winlin
+Copyright (c) 2013-2015 SRS(simple-rtmp-server)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -42,13 +42,13 @@ bool srs_st_epoll_is_supported(void)
 }
 #endif
 
-int srs_init_st()
+int srs_st_init()
 {
     int ret = ERROR_SUCCESS;
     
 #ifdef __linux__
     // check epoll, some old linux donot support epoll.
-    // @see https://github.com/winlinvip/simple-rtmp-server/issues/162
+    // @see https://github.com/simple-rtmp-server/srs/issues/162
     if (!srs_st_epoll_is_supported()) {
         ret = ERROR_ST_SET_EPOLL;
         srs_error("epoll required on Linux. ret=%d", ret);

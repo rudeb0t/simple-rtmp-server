@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 winlin
+Copyright (c) 2013-2015 SRS(simple-rtmp-server)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -31,42 +31,12 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <srs_kernel_stream.hpp>
 #include <srs_kernel_utility.hpp>
 
-// for srs-librtmp, @see https://github.com/winlinvip/simple-rtmp-server/issues/213
+// for srs-librtmp, @see https://github.com/simple-rtmp-server/srs/issues/213
 #ifndef _WIN32
 #include <unistd.h>
 #endif
 
 using namespace std;
-
-/**
-* the signature for packets to client.
-*/
-#define RTMP_SIG_FMS_VER                        "3,5,3,888"
-#define RTMP_SIG_AMF0_VER                       0
-#define RTMP_SIG_CLIENT_ID                      "ASAICiss"
-
-/**
-* onStatus consts.
-*/
-#define StatusLevel                             "level"
-#define StatusCode                              "code"
-#define StatusDescription                       "description"
-#define StatusDetails                           "details"
-#define StatusClientId                          "clientid"
-// status value
-#define StatusLevelStatus                       "status"
-// status error
-#define StatusLevelError                        "error"
-// code value
-#define StatusCodeConnectSuccess                "NetConnection.Connect.Success"
-#define StatusCodeConnectRejected               "NetConnection.Connect.Rejected"
-#define StatusCodeStreamReset                   "NetStream.Play.Reset"
-#define StatusCodeStreamStart                   "NetStream.Play.Start"
-#define StatusCodeStreamPause                   "NetStream.Pause.Notify"
-#define StatusCodeStreamUnpause                 "NetStream.Unpause.Notify"
-#define StatusCodePublishStart                  "NetStream.Publish.Start"
-#define StatusCodeDataStart                     "NetStream.Data.Start"
-#define StatusCodeUnpublishSuccess              "NetStream.Unpublish.Success"
 
 // FMLE
 #define RTMP_AMF0_COMMAND_ON_FC_PUBLISH         "onFCPublish"
@@ -129,15 +99,7 @@ void SrsRequest::update_auth(SrsRequest* req)
 
 string SrsRequest::get_stream_url()
 {
-    std::string url = "";
-    
-    url += vhost;
-    url += "/";
-    url += app;
-    url += "/";
-    url += stream;
-
-    return url;
+    return srs_generate_stream_url(vhost, app, stream);
 }
 
 void SrsRequest::strip()
@@ -295,7 +257,7 @@ int SrsHandshakeBytes::create_s0s1s2(const char* c1)
     }
     
     // if c1 specified, copy c1 to s2.
-    // @see: https://github.com/winlinvip/simple-rtmp-server/issues/46
+    // @see: https://github.com/simple-rtmp-server/srs/issues/46
     if (c1) {
         memcpy(s0s1s2 + 1537, c1, 1536);
     }
@@ -492,7 +454,7 @@ int SrsRtmpClient::connect_app2(
         }
         pkt->command_object->set("objectEncoding", SrsAmf0Any::number(0));
         
-        // @see https://github.com/winlinvip/simple-rtmp-server/issues/160
+        // @see https://github.com/simple-rtmp-server/srs/issues/160
         // the debug_srs_upnode is config in vhost and default to true.
         if (debug_srs_upnode && req && req->args) {
             srs_freep(pkt->args);
@@ -1049,7 +1011,7 @@ int SrsRtmpServer::identify_client(int stream_id, SrsRtmpConnType& type, string&
         }
         // call msg,
         // support response null first,
-        // @see https://github.com/winlinvip/simple-rtmp-server/issues/106
+        // @see https://github.com/simple-rtmp-server/srs/issues/106
         // TODO: FIXME: response in right way, or forward in edge mode.
         SrsCallPacket* call = dynamic_cast<SrsCallPacket*>(pkt);
         if (call) {
@@ -1139,7 +1101,7 @@ int SrsRtmpServer::start_play(int stream_id)
         SrsSampleAccessPacket* pkt = new SrsSampleAccessPacket();
 
         // allow audio/video sample.
-        // @see: https://github.com/winlinvip/simple-rtmp-server/issues/49
+        // @see: https://github.com/simple-rtmp-server/srs/issues/49
         pkt->audio_sample_access = true;
         pkt->video_sample_access = true;
         

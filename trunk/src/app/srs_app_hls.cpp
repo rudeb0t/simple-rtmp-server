@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 winlin
+Copyright (c) 2013-2015 SRS(simple-rtmp-server)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -22,11 +22,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
 #include <srs_app_hls.hpp>
-
-/**
-* the HLS section, only available when HLS enabled.
-*/
-#ifdef SRS_AUTO_HLS
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -51,7 +46,7 @@ using namespace std;
 #include <srs_kernel_utility.hpp>
 #include <srs_kernel_codec.hpp>
 #include <srs_kernel_file.hpp>
-#include <srs_rtmp_buffer.hpp>
+#include <srs_protocol_buffer.hpp>
 #include <srs_kernel_ts.hpp>
 #include <srs_app_utility.hpp>
 #include <srs_app_http_hooks.hpp>
@@ -71,6 +66,11 @@ ISrsHlsHandler::ISrsHlsHandler()
 ISrsHlsHandler::~ISrsHlsHandler()
 {
 }
+
+/**
+ * * the HLS section, only available when HLS enabled.
+ * */
+#ifdef SRS_AUTO_HLS
 
 SrsHlsCacheWriter::SrsHlsCacheWriter(bool write_cache, bool write_file)
 {
@@ -172,7 +172,7 @@ void SrsHlsSegment::update_duration(int64_t current_frame_dts)
 
 SrsDvrAsyncCallOnHls::SrsDvrAsyncCallOnHls(SrsRequest* r, string p, string t, string m, string mu, int s, double d)
 {
-    req = r;
+    req = r->copy();
     path = p;
     ts_url = t;
     m3u8 = m;
@@ -183,6 +183,7 @@ SrsDvrAsyncCallOnHls::SrsDvrAsyncCallOnHls(SrsRequest* r, string p, string t, st
 
 SrsDvrAsyncCallOnHls::~SrsDvrAsyncCallOnHls()
 {
+    srs_freep(req);
 }
 
 int SrsDvrAsyncCallOnHls::call()
@@ -221,12 +222,13 @@ string SrsDvrAsyncCallOnHls::to_string()
 
 SrsDvrAsyncCallOnHlsNotify::SrsDvrAsyncCallOnHlsNotify(SrsRequest* r, string u)
 {
-    req = r;
+    req = r->copy();
     ts_url = u;
 }
 
 SrsDvrAsyncCallOnHlsNotify::~SrsDvrAsyncCallOnHlsNotify()
 {
+    srs_freep(req);
 }
 
 int SrsDvrAsyncCallOnHlsNotify::call()
@@ -284,7 +286,7 @@ SrsHlsMuxer::SrsHlsMuxer()
     acodec = SrsCodecAudioReserved1;
     should_write_cache = false;
     should_write_file = true;
-    async = new SrsDvrAsyncCallThread();
+    async = new SrsAsyncCallWorker();
     context = new SrsTsContext();
 }
 
@@ -301,6 +303,37 @@ SrsHlsMuxer::~SrsHlsMuxer()
     srs_freep(req);
     srs_freep(async);
     srs_freep(context);
+}
+
+void SrsHlsMuxer::dispose()
+{
+    if (should_write_file) {
+        std::vector<SrsHlsSegment*>::iterator it;
+        for (it = segments.begin(); it != segments.end(); ++it) {
+            SrsHlsSegment* segment = *it;
+            if (unlink(segment->full_path.c_str()) < 0) {
+                srs_warn("dispose unlink path failed, file=%s.", segment->full_path.c_str());
+            }
+            srs_freep(segment);
+        }
+        segments.clear();
+        
+        if (current) {
+            std::string path = current->full_path + ".tmp";
+            if (unlink(path.c_str()) < 0) {
+                srs_warn("dispose unlink path failed, file=%s", path.c_str());
+            }
+            srs_freep(current);
+        }
+        
+        if (unlink(m3u8.c_str()) < 0) {
+            srs_warn("dispose unlink path failed. file=%s", m3u8.c_str());
+        }
+    }
+    
+    // TODO: FIXME: support hls dispose in HTTP cache.
+    
+    srs_trace("gracefully dispose hls %s", req? req->get_stream_url().c_str() : "");
 }
 
 int SrsHlsMuxer::sequence_no()
@@ -418,6 +451,9 @@ int SrsHlsMuxer::segment_open(int64_t segment_start_dts)
         } else if (default_acodec_str == "aac") {
             default_acodec = SrsCodecAudioAAC;
             srs_info("hls: use default aac acodec");
+        } else if (default_acodec_str == "an") {
+            default_acodec = SrsCodecAudioDisabled;
+            srs_info("hls: use default an acodec for pure video");
         } else {
             srs_warn("hls: use aac for other codec=%s", default_acodec_str.c_str());
         }
@@ -565,7 +601,7 @@ bool SrsHlsMuxer::wait_keyframe()
 
 bool SrsHlsMuxer::is_segment_absolutely_overflow()
 {
-    // @see https://github.com/winlinvip/simple-rtmp-server/issues/151#issuecomment-83553950
+    // @see https://github.com/simple-rtmp-server/srs/issues/151#issuecomment-83553950
     srs_assert(current);
     
     // to prevent very small segment.
@@ -667,7 +703,7 @@ int SrsHlsMuxer::segment_close(string log_desc)
         segments.push_back(current);
         
         // use async to call the http hooks, for it will cause thread switch.
-        if ((ret = async->call(new SrsDvrAsyncCallOnHls(req,
+        if ((ret = async->execute(new SrsDvrAsyncCallOnHls(req,
             current->full_path, current->uri, m3u8, m3u8_url,
             current->sequence_no, current->duration))) != ERROR_SUCCESS)
         {
@@ -675,7 +711,7 @@ int SrsHlsMuxer::segment_close(string log_desc)
         }
         
         // use async to call the http hooks, for it will cause thread switch.
-        if ((ret = async->call(new SrsDvrAsyncCallOnHlsNotify(req, current->uri))) != ERROR_SUCCESS) {
+        if ((ret = async->execute(new SrsDvrAsyncCallOnHlsNotify(req, current->uri))) != ERROR_SUCCESS) {
             return ret;
         }
     
@@ -715,6 +751,9 @@ int SrsHlsMuxer::segment_close(string log_desc)
         std::string tmp_file = current->full_path + ".tmp";
         if (should_write_file) {
             unlink(tmp_file.c_str());
+            if (unlink(tmp_file.c_str()) < 0) {
+                srs_warn("drop unlink path failed, file=%s.", tmp_file.c_str());
+            }
         }
         
         srs_freep(current);
@@ -749,7 +788,9 @@ int SrsHlsMuxer::segment_close(string log_desc)
         SrsHlsSegment* segment = segment_to_remove[i];
         
         if (hls_cleanup) {
-            unlink(segment->full_path.c_str());
+            if (unlink(segment->full_path.c_str()) < 0) {
+                srs_warn("cleanup unlink path failed, file=%s.", segment->full_path.c_str());
+            }
         }
         
         srs_freep(segment);
@@ -822,7 +863,7 @@ int SrsHlsMuxer::_refresh_m3u8(string m3u8_file)
     * rounded to the nearest integer. Its value MUST NOT change. A
     * typical target duration is 10 seconds.
     */
-    // @see https://github.com/winlinvip/simple-rtmp-server/issues/304#issuecomment-74000081
+    // @see https://github.com/simple-rtmp-server/srs/issues/304#issuecomment-74000081
     std::vector<SrsHlsSegment*>::iterator it;
     for (it = segments.begin(); it != segments.end(); ++it) {
         SrsHlsSegment* segment = *it;
@@ -986,9 +1027,9 @@ int SrsHlsCache::write_audio(SrsAvcAacCodec* codec, SrsHlsMuxer* muxer, int64_t 
     // for example, pure audio when start, audio/video when publishing,
     // pure audio again for audio disabled.
     // so we reap event when the audio incoming when segment overflow.
-    // @see https://github.com/winlinvip/simple-rtmp-server/issues/151
+    // @see https://github.com/simple-rtmp-server/srs/issues/151
     // we use absolutely overflow of segment to make jwplayer/ffplay happy
-    // @see https://github.com/winlinvip/simple-rtmp-server/issues/151#issuecomment-71155184
+    // @see https://github.com/simple-rtmp-server/srs/issues/151#issuecomment-71155184
     if (cache->audio && muxer->is_segment_absolutely_overflow()) {
         srs_info("hls: absolute audio reap segment.");
         if ((ret = reap_segment("audio", muxer, cache->audio->pts)) != ERROR_SUCCESS) {
@@ -1076,10 +1117,13 @@ int SrsHlsCache::reap_segment(string log_desc, SrsHlsMuxer* muxer, int64_t segme
 
 SrsHls::SrsHls()
 {
+    _req = NULL;
     source = NULL;
     handler = NULL;
     
     hls_enabled = false;
+    hls_can_dispose = false;
+    last_update_time = 0;
 
     codec = new SrsAvcAacCodec();
     sample = new SrsCodecSample();
@@ -1094,6 +1138,7 @@ SrsHls::SrsHls()
 
 SrsHls::~SrsHls()
 {
+    srs_freep(_req);
     srs_freep(codec);
     srs_freep(sample);
     srs_freep(jitter);
@@ -1102,6 +1147,54 @@ SrsHls::~SrsHls()
     srs_freep(hls_cache);
     
     srs_freep(pprint);
+}
+
+void SrsHls::dispose()
+{
+    if (hls_enabled) {
+        on_unpublish();
+    }
+    
+    // only dispose hls when positive.
+    if (_req) {
+        int hls_dispose = _srs_config->get_hls_dispose(_req->vhost);
+        if (hls_dispose <= 0) {
+            return;
+        }
+    }
+    
+    muxer->dispose();
+}
+
+int SrsHls::cycle()
+{
+    int ret = ERROR_SUCCESS;
+    
+    srs_info("hls cycle for source %d", source->source_id());
+    
+    if (last_update_time <= 0) {
+        last_update_time = srs_get_system_time_ms();
+    }
+    
+    if (!_req) {
+        return ret;
+    }
+    
+    int hls_dispose = _srs_config->get_hls_dispose(_req->vhost) * 1000;
+    if (srs_get_system_time_ms() - last_update_time <= hls_dispose) {
+        return ret;
+    }
+    last_update_time = srs_get_system_time_ms();
+    
+    if (!hls_can_dispose) {
+        return ret;
+    }
+    hls_can_dispose = false;
+    
+    srs_trace("hls cycle to dispose hls %s, timeout=%dms", _req->get_stream_url().c_str(), hls_dispose);
+    dispose();
+    
+    return ret;
 }
 
 int SrsHls::initialize(SrsSource* s, ISrsHlsHandler* h)
@@ -1122,6 +1215,12 @@ int SrsHls::on_publish(SrsRequest* req)
 {
     int ret = ERROR_SUCCESS;
     
+    srs_freep(_req);
+    _req = req->copy();
+    
+    // update the hls time, for hls_dispose.
+    last_update_time = srs_get_system_time_ms();
+    
     // support multiple publish.
     if (hls_enabled) {
         return ret;
@@ -1138,6 +1237,9 @@ int SrsHls::on_publish(SrsRequest* req)
     
     // if enabled, open the muxer.
     hls_enabled = true;
+    
+    // ok, the hls can be dispose, or need to be dispose.
+    hls_can_dispose = true;
     
     // notice the source to get the cached sequence header.
     // when reload to start hls, hls will never get the sequence header in stream,
@@ -1190,6 +1292,9 @@ int SrsHls::on_audio(SrsSharedPtrMessage* shared_audio)
     if (!hls_enabled) {
         return ret;
     }
+    
+    // update the hls time, for hls_dispose.
+    last_update_time = srs_get_system_time_ms();
 
     SrsSharedPtrMessage* audio = shared_audio->copy();
     SrsAutoFree(SrsSharedPtrMessage, audio);
@@ -1251,6 +1356,9 @@ int SrsHls::on_video(SrsSharedPtrMessage* shared_video)
     if (!hls_enabled) {
         return ret;
     }
+    
+    // update the hls time, for hls_dispose.
+    last_update_time = srs_get_system_time_ms();
 
     SrsSharedPtrMessage* video = shared_video->copy();
     SrsAutoFree(SrsSharedPtrMessage, video);
@@ -1264,7 +1372,7 @@ int SrsHls::on_video(SrsSharedPtrMessage* shared_video)
         sample->frame_type, codec->video_codec_id, sample->avc_packet_type, sample->cts, video->size, video->timestamp);
     
     // ignore info frame,
-    // @see https://github.com/winlinvip/simple-rtmp-server/issues/288#issuecomment-69863909
+    // @see https://github.com/simple-rtmp-server/srs/issues/288#issuecomment-69863909
     if (sample->frame_type == SrsCodecVideoAVCFrameVideoInfoFrame) {
         return ret;
     }
@@ -1304,7 +1412,7 @@ void SrsHls::hls_show_mux_log()
     // reportable
     if (pprint->can_print()) {
         // the run time is not equals to stream time,
-        // @see: https://github.com/winlinvip/simple-rtmp-server/issues/81#issuecomment-48100994
+        // @see: https://github.com/simple-rtmp-server/srs/issues/81#issuecomment-48100994
         // it's ok.
         srs_trace("-> "SRS_CONSTS_LOG_HLS" time=%"PRId64", stream dts=%"PRId64"(%"PRId64"ms), sno=%d, ts=%s, dur=%.2f, dva=%dp",
             pprint->age(), stream_dts, stream_dts / 90, muxer->sequence_no(), muxer->ts_url().c_str(),

@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 winlin
+Copyright (c) 2013-2015 SRS(simple-rtmp-server)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -34,6 +34,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <srs_app_conn.hpp>
 #include <srs_app_reload.hpp>
 
+class SrsServer;
 class SrsRtmpServer;
 class SrsRequest;
 class SrsResponse;
@@ -61,6 +62,7 @@ class SrsRtmpConn : public virtual SrsConnection, public virtual ISrsReloadHandl
     // for the thread to directly access any field of connection.
     friend class SrsPublishRecvThread;
 private:
+    SrsServer* server;
     SrsRequest* req;
     SrsResponse* res;
     SrsStSocket* skt;
@@ -70,7 +72,7 @@ private:
     SrsSecurity* security;
     // elapse duration in ms
     // for live play duration, for instance, rtmpdump to record.
-    // @see https://github.com/winlinvip/simple-rtmp-server/issues/47
+    // @see https://github.com/simple-rtmp-server/srs/issues/47
     int64_t duration;
     SrsKbps* kbps;
     // the MR(merged-write) sleep time in ms.
@@ -78,10 +80,10 @@ private:
     // the MR(merged-write) only enabled for play.
     int mw_enabled;
     // for realtime
-    // @see https://github.com/winlinvip/simple-rtmp-server/issues/257
+    // @see https://github.com/simple-rtmp-server/srs/issues/257
     bool realtime;
 public:
-    SrsRtmpConn(SrsServer* srs_server, st_netfd_t client_stfd);
+    SrsRtmpConn(SrsServer* svr, st_netfd_t c);
     virtual ~SrsRtmpConn();
 protected:
     virtual int do_cycle();

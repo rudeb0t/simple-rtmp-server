@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 winlin
+Copyright (c) 2013-2015 SRS(simple-rtmp-server)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -33,7 +33,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <vector>
 
 #include <srs_app_thread.hpp>
-#include <srs_rtmp_buffer.hpp>
+#include <srs_protocol_buffer.hpp>
 #include <srs_core_performance.hpp>
 #include <srs_app_reload.hpp>
 
@@ -79,10 +79,10 @@ public:
 /**
  * the recv thread, use message handler to handle each received message.
  */
-class SrsRecvThread : public ISrsThreadHandler
+class SrsRecvThread : public ISrsReusableThread2Handler
 {
 protected:
-    SrsThread* trd;
+    SrsReusableThread2* trd;
     ISrsMessageHandler* handler;
     SrsRtmpServer* rtmp;
     int timeout;
@@ -92,9 +92,10 @@ public:
 public:
     virtual int start();
     virtual void stop();
-    virtual int cycle();
     virtual void stop_loop();
+// interface ISrsReusableThread2Handler
 public:
+    virtual int cycle();
     virtual void on_thread_start();
     virtual void on_thread_stop();
 };
@@ -103,7 +104,7 @@ public:
 * the recv thread used to replace the timeout recv,
 * which hurt performance for the epoll_ctrl is frequently used.
 * @see: SrsRtmpConn::playing
-* @see: https://github.com/winlinvip/simple-rtmp-server/issues/217
+* @see: https://github.com/simple-rtmp-server/srs/issues/217
 */
 class SrsQueueRecvThread : public ISrsMessageHandler
 {
@@ -136,7 +137,7 @@ public:
 
 /**
 * the publish recv thread got message and callback the source method to process message.
-* @see: https://github.com/winlinvip/simple-rtmp-server/issues/237
+* @see: https://github.com/simple-rtmp-server/srs/issues/237
 */
 class SrsPublishRecvThread : virtual public ISrsMessageHandler
 #ifdef SRS_PERF_MERGED_READ
@@ -151,12 +152,12 @@ private:
     // the msgs already got.
     int64_t _nb_msgs;
     // for mr(merged read),
-    // @see https://github.com/winlinvip/simple-rtmp-server/issues/241
+    // @see https://github.com/simple-rtmp-server/srs/issues/241
     bool mr;
     int mr_fd;
     int mr_sleep;
     // for realtime
-    // @see https://github.com/winlinvip/simple-rtmp-server/issues/257
+    // @see https://github.com/simple-rtmp-server/srs/issues/257
     bool realtime;
     // the recv thread error code.
     int recv_error_code;
@@ -166,7 +167,7 @@ private:
     bool _is_fmle;
     bool _is_edge;
     // the error timeout cond
-    // @see https://github.com/winlinvip/simple-rtmp-server/issues/244
+    // @see https://github.com/simple-rtmp-server/srs/issues/244
     st_cond_t error;
 public:
     SrsPublishRecvThread(SrsRtmpServer* rtmp_sdk, 

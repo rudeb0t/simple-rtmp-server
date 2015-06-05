@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 winlin
+Copyright (c) 2013-2015 SRS(simple-rtmp-server)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -38,6 +38,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <srs_app_source.hpp>
 #include <srs_app_hls.hpp>
 #include <srs_app_listener.hpp>
+#include <srs_app_conn.hpp>
 
 class SrsServer;
 class SrsConnection;
@@ -51,6 +52,9 @@ class ISrsTcpHandler;
 class ISrsUdpHandler;
 class SrsUdpListener;
 class SrsTcpListener;
+#ifdef SRS_AUTO_STREAM_CASTER
+class SrsAppCasterFlv;
+#endif
 
 // listener type for server to identify the connection,
 // that is, use different type to process the connection.
@@ -66,6 +70,8 @@ enum SrsListenerType
     SrsListenerMpegTsOverUdp    = 3,
     // TCP stream, RTSP stream.
     SrsListenerRtsp             = 4,
+    // TCP stream, FLV stream over HTTP.
+    SrsListenerFlv              = 5,
 };
 
 /**
@@ -74,17 +80,17 @@ enum SrsListenerType
 class SrsListener
 {
 protected:
-    SrsListenerType _type;
+    SrsListenerType type;
 protected:
-    std::string _ip;
-    int _port;
-    SrsServer* _server;
+    std::string ip;
+    int port;
+    SrsServer* server;
 public:
-    SrsListener(SrsServer* server, SrsListenerType type);
+    SrsListener(SrsServer* svr, SrsListenerType t);
     virtual ~SrsListener();
 public:
-    virtual SrsListenerType type();
-    virtual int listen(std::string ip, int port) = 0;
+    virtual SrsListenerType listen_type();
+    virtual int listen(std::string i, int p) = 0;
 };
 
 /**
@@ -114,28 +120,58 @@ private:
     SrsTcpListener* listener;
     ISrsTcpHandler* caster;
 public:
-    SrsRtspListener(SrsServer* server, SrsListenerType type, SrsConfDirective* c);
+    SrsRtspListener(SrsServer* svr, SrsListenerType t, SrsConfDirective* c);
     virtual ~SrsRtspListener();
 public:
-    virtual int listen(std::string ip, int port);
+    virtual int listen(std::string i, int p);
 // ISrsTcpHandler
 public:
     virtual int on_tcp_client(st_netfd_t stfd);
 };
 
 /**
-* the udp listener, for udp server.
-*/
-class SrsUdpCasterListener : public SrsListener
+ * the tcp listener, for flv stream server.
+ */
+class SrsHttpFlvListener : virtual public SrsListener, virtual public ISrsTcpHandler
 {
 private:
+    SrsTcpListener* listener;
+    SrsAppCasterFlv* caster;
+public:
+    SrsHttpFlvListener(SrsServer* svr, SrsListenerType t, SrsConfDirective* c);
+    virtual ~SrsHttpFlvListener();
+public:
+    virtual int listen(std::string i, int p);
+// ISrsTcpHandler
+public:
+    virtual int on_tcp_client(st_netfd_t stfd);
+};
+#endif
+
+/**
+ * the udp listener, for udp server.
+ */
+class SrsUdpStreamListener : public SrsListener
+{
+protected:
     SrsUdpListener* listener;
     ISrsUdpHandler* caster;
 public:
-    SrsUdpCasterListener(SrsServer* server, SrsListenerType type, SrsConfDirective* c);
-    virtual ~SrsUdpCasterListener();
+    SrsUdpStreamListener(SrsServer* svr, SrsListenerType t, ISrsUdpHandler* c);
+    virtual ~SrsUdpStreamListener();
 public:
-    virtual int listen(std::string ip, int port);
+    virtual int listen(std::string i, int p);
+};
+
+/**
+ * the udp listener, for udp stream caster server.
+ */
+#ifdef SRS_AUTO_STREAM_CASTER
+class SrsUdpCasterListener : public SrsUdpStreamListener
+{
+public:
+    SrsUdpCasterListener(SrsServer* svr, SrsListenerType t, SrsConfDirective* c);
+    virtual ~SrsUdpCasterListener();
 };
 #endif
 
@@ -143,7 +179,7 @@ public:
 * convert signal to io,
 * @see: st-1.9/docs/notes.html
 */
-class SrsSignalManager : public ISrsThreadHandler
+class SrsSignalManager : public ISrsEndlessThreadHandler
 {
 private:
     /* Per-process pipe which is used as a signal queue. */
@@ -152,14 +188,14 @@ private:
     st_netfd_t signal_read_stfd;
 private:
     SrsServer* _server;
-    SrsThread* pthread;
+    SrsEndlessThread* pthread;
 public:
     SrsSignalManager(SrsServer* server);
     virtual ~SrsSignalManager();
 public:
     virtual int initialize();
     virtual int start();
-// interface ISrsThreadHandler.
+// interface ISrsEndlessThreadHandler.
 public:
     virtual int cycle();
 private:
@@ -195,6 +231,7 @@ public:
 */
 class SrsServer : virtual public ISrsReloadHandler
     , virtual public ISrsSourceHandler, virtual public ISrsHlsHandler
+    , virtual public IConnectionManager
 {
 private:
 #ifdef SRS_AUTO_HTTP_API
@@ -203,7 +240,7 @@ private:
 #ifdef SRS_AUTO_HTTP_SERVER
     SrsHttpServer* http_stream_mux;
 #endif
-#ifdef SRS_AUTO_HTTP_PARSER
+#ifdef SRS_AUTO_HTTP_CORE
     SrsHttpHeartbeat* http_heartbeat;
 #endif
 #ifdef SRS_AUTO_INGEST
@@ -238,16 +275,22 @@ private:
     */
     bool signal_reload;
     bool signal_gmc_stop;
+    bool signal_gracefully_quit;
 public:
     SrsServer();
     virtual ~SrsServer();
-public:
+private:
     /**
     * the destroy is for gmc to analysis the memory leak,
     * if not destroy global/static data, the gmc will warning memory leak.
     * in service, server never destroy, directly exit when restart.
     */
     virtual void destroy();
+    /**
+     * when SIGTERM, SRS should do cleanup, for example, 
+     * to stop all ingesters, cleanup HLS and dvr.
+     */
+    virtual void dispose();
 // server startup workflow, @see run_master()
 public:
     virtual int initialize(ISrsServerCycle* cycle_handler);
@@ -259,7 +302,7 @@ public:
     virtual int http_handle();
     virtual int ingest();
     virtual int cycle();
-// server utility
+// IConnectionManager
 public:
     /**
     * callback for connection to remove itself.
@@ -267,6 +310,8 @@ public:
     * @see SrsConnection.on_thread_stop().
     */
     virtual void remove(SrsConnection* conn);
+// server utilities.
+public:
     /**
     * callback for signal manager got a signal.
     * the signal manager convert signal to io message,
@@ -310,7 +355,7 @@ public:
     * @param client_stfd, the client fd in st boxed, the underlayer fd.
     */
     virtual int accept_client(SrsListenerType type, st_netfd_t client_stfd);
-// interface ISrsThreadHandler.
+// interface ISrsReloadHandler.
 public:
     virtual int on_reload_listen();
     virtual int on_reload_pid();

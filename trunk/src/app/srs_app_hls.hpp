@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 winlin
+Copyright (c) 2013-2015 SRS(simple-rtmp-server)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -28,11 +28,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <srs_app_hls.hpp>
 */
 #include <srs_core.hpp>
-
-/**
-* the HLS section, only available when HLS enabled.
-*/
-#ifdef SRS_AUTO_HLS
 
 #include <string>
 #include <vector>
@@ -85,6 +80,11 @@ public:
     */
     virtual int on_hls_unpublish(SrsRequest* req) = 0;
 };
+
+/**
+ * * the HLS section, only available when HLS enabled.
+ * */
+#ifdef SRS_AUTO_HLS
 
 /**
 * write to file and cache.
@@ -159,7 +159,7 @@ public:
 /**
  * the hls async call: on_hls
  */
-class SrsDvrAsyncCallOnHls : public ISrsDvrAsyncCall
+class SrsDvrAsyncCallOnHls : public ISrsAsyncCallTask
 {
 private:
     std::string path;
@@ -180,7 +180,7 @@ public:
 /**
  * the hls async call: on_hls_notify
  */
-class SrsDvrAsyncCallOnHlsNotify : public ISrsDvrAsyncCall
+class SrsDvrAsyncCallOnHlsNotify : public ISrsAsyncCallTask
 {
 private:
     std::string ts_url;
@@ -215,7 +215,7 @@ private:
     double hls_aof_ratio;
     double hls_fragment;
     double hls_window;
-    SrsDvrAsyncCallThread* async;
+    SrsAsyncCallWorker* async;
 private:
     // whether use floor algorithm for timestamp.
     bool hls_ts_floor;
@@ -248,17 +248,19 @@ private:
     /**
     * the current audio codec, when open new muxer,
     * set the muxer audio codec.
-    * @see https://github.com/winlinvip/simple-rtmp-server/issues/301
+    * @see https://github.com/simple-rtmp-server/srs/issues/301
     */
     SrsCodecAudio acodec;
     /**
      * the ts context, to keep cc continous between ts.
-     * @see https://github.com/winlinvip/simple-rtmp-server/issues/375
+     * @see https://github.com/simple-rtmp-server/srs/issues/375
      */
     SrsTsContext* context;
 public:
     SrsHlsMuxer();
     virtual ~SrsHlsMuxer();
+public:
+    virtual void dispose();
 public:
     virtual int sequence_no();
     virtual std::string ts_url();
@@ -295,7 +297,7 @@ public:
     /**
     * whether segment absolutely overflow, for pure audio to reap segment,
     * that is whether the current segment duration>=2*(the segment in config)
-    * @see https://github.com/winlinvip/simple-rtmp-server/issues/151#issuecomment-71155184
+    * @see https://github.com/simple-rtmp-server/srs/issues/151#issuecomment-71155184
     */
     virtual bool is_segment_absolutely_overflow();
 public:
@@ -379,7 +381,11 @@ private:
     SrsHlsCache* hls_cache;
     ISrsHlsHandler* handler;
 private:
+    SrsRequest* _req;
     bool hls_enabled;
+    bool hls_can_dispose;
+    int64_t last_update_time;
+private:
     SrsSource* source;
     SrsAvcAacCodec* codec;
     SrsCodecSample* sample;
@@ -402,6 +408,9 @@ private:
 public:
     SrsHls();
     virtual ~SrsHls();
+public:
+    virtual void dispose();
+    virtual int cycle();
 public:
     /**
     * initialize the hls by handler and source.

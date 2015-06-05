@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 winlin
+Copyright (c) 2013-2015 SRS(simple-rtmp-server)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -51,11 +51,16 @@ SrsIngesterFFMPEG::~SrsIngesterFFMPEG()
     srs_freep(ffmpeg);
 }
 
+void SrsIngesterFFMPEG::fast_stop()
+{
+    ffmpeg->fast_stop();
+}
+
 SrsIngester::SrsIngester()
 {
     _srs_config->subscribe(this);
     
-    pthread = new SrsThread("ingest", this, SRS_AUTO_INGESTER_SLEEP_US, true);
+    pthread = new SrsReusableThread("ingest", this, SRS_AUTO_INGESTER_SLEEP_US);
     pprint = SrsPithyPrint::create_ingester();
 }
 
@@ -157,6 +162,23 @@ int SrsIngester::parse_engines(SrsConfDirective* vhost, SrsConfDirective* ingest
     }
     
     return ret;
+}
+
+void SrsIngester::dispose()
+{
+    // first, use fast stop to notice all FFMPEG to quit gracefully.
+    std::vector<SrsIngesterFFMPEG*>::iterator it;
+    for (it = ingesters.begin(); it != ingesters.end(); ++it) {
+        SrsIngesterFFMPEG* ingester = *it;
+        ingester->fast_stop();
+    }
+    
+    if (!ingesters.empty()) {
+        srs_trace("fast stop all ingesters ok.");
+    }
+    
+    // then, use stop to wait FFMPEG quit one by one and send SIGKILL if needed.
+    stop();
 }
 
 void SrsIngester::stop()

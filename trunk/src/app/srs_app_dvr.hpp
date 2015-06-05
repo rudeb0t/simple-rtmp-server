@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 winlin
+Copyright (c) 2013-2015 SRS(simple-rtmp-server)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -178,7 +178,7 @@ public:
 /**
 * the dvr async call.
 */
-class SrsDvrAsyncCallOnDvr : public ISrsDvrAsyncCall
+class SrsDvrAsyncCallOnDvr : public ISrsAsyncCallTask
 {
 private:
     std::string path;
@@ -206,7 +206,7 @@ public:
     SrsRequest* req;
 protected:
     SrsFlvSegment* segment;
-    SrsDvrAsyncCallThread* async;
+    SrsAsyncCallWorker* async;
     bool dvr_enabled;
 public:
     SrsDvrPlan();

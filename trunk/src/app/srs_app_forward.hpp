@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 winlin
+Copyright (c) 2013-2015 SRS(simple-rtmp-server)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -48,7 +48,7 @@ class SrsKbps;
 * forward the stream to other servers.
 */
 // TODO: FIXME: refine the error log, comments it.
-class SrsForwarder : public ISrsThreadHandler
+class SrsForwarder : public ISrsReusableThread2Handler
 {
 private:
     // the ep to forward, server[:port].
@@ -57,7 +57,7 @@ private:
     int stream_id;
 private:
     st_netfd_t stfd;
-    SrsThread* pthread;
+    SrsReusableThread2* pthread;
 private:
     SrsSource* source;
     ISrsProtocolReaderWriter* io;
@@ -67,7 +67,7 @@ private:
     SrsMessageQueue* queue;
     /**
     * cache the sequence header for retry when slave is failed.
-    * @see https://github.com/winlinvip/simple-rtmp-server/issues/150
+    * @see https://github.com/simple-rtmp-server/srs/issues/150
     */
     SrsSharedPtrMessage* sh_audio;
     SrsSharedPtrMessage* sh_video;
@@ -95,7 +95,7 @@ public:
     * @param shared_video, directly ptr, copy it if need to save it.
     */
     virtual int on_video(SrsSharedPtrMessage* shared_video);
-// interface ISrsThreadHandler.
+// interface ISrsReusableThread2Handler.
 public:
     virtual int cycle();
 private:

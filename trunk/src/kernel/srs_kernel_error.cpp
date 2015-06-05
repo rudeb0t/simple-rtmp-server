@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 winlin
+Copyright (c) 2013-2015 SRS(simple-rtmp-server)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -33,6 +33,7 @@ bool srs_is_client_gracefully_close(int error_code)
 {
     return error_code == ERROR_SOCKET_READ
         || error_code == ERROR_SOCKET_READ_FULLY
-        || error_code == ERROR_SOCKET_WRITE;
+        || error_code == ERROR_SOCKET_WRITE
+        || error_code == ERROR_SOCKET_TIMEOUT;
 }
 

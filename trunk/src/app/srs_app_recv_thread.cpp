@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 winlin
+Copyright (c) 2013-2015 SRS(simple-rtmp-server)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -26,7 +26,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <srs_rtmp_sdk.hpp>
 #include <srs_rtmp_stack.hpp>
 #include <srs_app_rtmp_conn.hpp>
-#include <srs_rtmp_buffer.hpp>
+#include <srs_protocol_buffer.hpp>
 #include <srs_kernel_utility.hpp>
 #include <srs_core_performance.hpp>
 #include <srs_app_config.hpp>
@@ -50,7 +50,7 @@ SrsRecvThread::SrsRecvThread(ISrsMessageHandler* msg_handler, SrsRtmpServer* rtm
     timeout = timeout_ms;
     handler = msg_handler;
     rtmp = rtmp_sdk;
-    trd = new SrsThread("recv", this, 0, true);
+    trd = new SrsReusableThread2("recv", this);
 }
 
 SrsRecvThread::~SrsRecvThread()
@@ -72,11 +72,16 @@ void SrsRecvThread::stop()
     trd->stop();
 }
 
+void SrsRecvThread::stop_loop()
+{
+    trd->interrupt();
+}
+
 int SrsRecvThread::cycle()
 {
     int ret = ERROR_SUCCESS;
 
-    while (trd->can_loop()) {
+    while (!trd->interrupted()) {
         if (!handler->can_handle()) {
             st_usleep(timeout * 1000);
             continue;
@@ -96,7 +101,7 @@ int SrsRecvThread::cycle()
             }
     
             // we use no timeout to recv, should never got any error.
-            trd->stop_loop();
+            trd->interrupt();
             
             // notice the handler got a recv error.
             handler->on_recv_error(ret);
@@ -109,18 +114,13 @@ int SrsRecvThread::cycle()
     return ret;
 }
 
-void SrsRecvThread::stop_loop()
-{
-    trd->stop_loop();
-}
-
 void SrsRecvThread::on_thread_start()
 {
     // the multiple messages writev improve performance large,
     // but the timeout recv will cause 33% sys call performance,
     // to use isolate thread to recv, can improve about 33% performance.
-    // @see https://github.com/winlinvip/simple-rtmp-server/issues/194
-    // @see: https://github.com/winlinvip/simple-rtmp-server/issues/217
+    // @see https://github.com/simple-rtmp-server/srs/issues/194
+    // @see: https://github.com/simple-rtmp-server/srs/issues/217
     rtmp->set_recv_timeout(ST_UTIME_NO_TIMEOUT);
     
     handler->on_thread_start();
@@ -258,7 +258,7 @@ SrsPublishRecvThread::SrsPublishRecvThread(
     mr_fd = mr_sock_fd;
 
     // the mr settings, 
-    // @see https://github.com/winlinvip/simple-rtmp-server/issues/241
+    // @see https://github.com/simple-rtmp-server/srs/issues/241
     mr = _srs_config->get_mr_enabled(req->vhost);
     mr_sleep = _srs_config->get_mr_sleep_ms(req->vhost);
     
@@ -318,7 +318,7 @@ void SrsPublishRecvThread::on_thread_start()
         set_socket_buffer(mr_sleep);
 
         // disable the merge read
-        // @see https://github.com/winlinvip/simple-rtmp-server/issues/241
+        // @see https://github.com/simple-rtmp-server/srs/issues/241
         rtmp->set_merge_read(true, this);
     }
 #endif
@@ -330,13 +330,13 @@ void SrsPublishRecvThread::on_thread_stop()
     // for we donot set to false yet.
     
     // when thread stop, signal the conn thread which wait.
-    // @see https://github.com/winlinvip/simple-rtmp-server/issues/244
+    // @see https://github.com/simple-rtmp-server/srs/issues/244
     st_cond_signal(error);
 
 #ifdef SRS_PERF_MERGED_READ
     if (mr) {
         // disable the merge read
-        // @see https://github.com/winlinvip/simple-rtmp-server/issues/241
+        // @see https://github.com/simple-rtmp-server/srs/issues/241
         rtmp->set_merge_read(false, NULL);
     }
 #endif
@@ -373,7 +373,7 @@ void SrsPublishRecvThread::on_recv_error(int ret)
     recv_error_code = ret;
 
     // when recv thread error, signal the conn thread to process it.
-    // @see https://github.com/winlinvip/simple-rtmp-server/issues/244
+    // @see https://github.com/simple-rtmp-server/srs/issues/244
     st_cond_signal(error);
 }
 
@@ -392,7 +392,7 @@ void SrsPublishRecvThread::on_read(ssize_t nread)
     * to improve read performance, merge some packets then read,
     * when it on and read small bytes, we sleep to wait more data.,
     * that is, we merge some data to read together.
-    * @see https://github.com/winlinvip/simple-rtmp-server/issues/241
+    * @see https://github.com/simple-rtmp-server/srs/issues/241
     */
     if (nread < SRS_MR_SMALL_BYTES) {
         st_usleep(mr_sleep * 1000);
@@ -409,7 +409,7 @@ int SrsPublishRecvThread::on_reload_vhost_mr(string vhost)
     }
 
     // the mr settings, 
-    // @see https://github.com/winlinvip/simple-rtmp-server/issues/241
+    // @see https://github.com/simple-rtmp-server/srs/issues/241
     bool mr_enabled = _srs_config->get_mr_enabled(req->vhost);
     int sleep_ms = _srs_config->get_mr_sleep_ms(req->vhost);
 
@@ -422,13 +422,13 @@ int SrsPublishRecvThread::on_reload_vhost_mr(string vhost)
     // mr enabled=>disabled
     if (mr && !mr_enabled) {
         // disable the merge read
-        // @see https://github.com/winlinvip/simple-rtmp-server/issues/241
+        // @see https://github.com/simple-rtmp-server/srs/issues/241
         rtmp->set_merge_read(false, NULL);
     }
     // mr disabled=>enabled
     if (!mr && mr_enabled) {
         // enable the merge read
-        // @see https://github.com/winlinvip/simple-rtmp-server/issues/241
+        // @see https://github.com/simple-rtmp-server/srs/issues/241
         rtmp->set_merge_read(true, this);
     }
 #endif

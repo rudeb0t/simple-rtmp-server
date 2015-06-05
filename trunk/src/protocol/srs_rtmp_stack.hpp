@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 winlin
+Copyright (c) 2013-2015 SRS(simple-rtmp-server)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -34,7 +34,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <vector>
 #include <string>
 
-// for srs-librtmp, @see https://github.com/winlinvip/simple-rtmp-server/issues/213
+// for srs-librtmp, @see https://github.com/simple-rtmp-server/srs/issues/213
 #ifndef _WIN32
 #include <sys/uio.h>
 #endif
@@ -43,6 +43,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <srs_kernel_error.hpp>
 #include <srs_kernel_consts.hpp>
 #include <srs_core_performance.hpp>
+#include <srs_kernel_flv.hpp>
 
 class ISrsProtocolReaderWriter;
 class SrsFastBuffer;
@@ -57,265 +58,29 @@ class SrsSharedPtrMessage;
 class IMergeReadHandler;
 
 /****************************************************************************
+ *****************************************************************************
+ ****************************************************************************/
+/**
+ * amf0 command message, command name macros
+ */
+#define RTMP_AMF0_COMMAND_CONNECT               "connect"
+#define RTMP_AMF0_COMMAND_CREATE_STREAM         "createStream"
+#define RTMP_AMF0_COMMAND_CLOSE_STREAM          "closeStream"
+#define RTMP_AMF0_COMMAND_PLAY                  "play"
+#define RTMP_AMF0_COMMAND_PAUSE                 "pause"
+#define RTMP_AMF0_COMMAND_ON_BW_DONE            "onBWDone"
+#define RTMP_AMF0_COMMAND_ON_STATUS             "onStatus"
+#define RTMP_AMF0_COMMAND_RESULT                "_result"
+#define RTMP_AMF0_COMMAND_ERROR                 "_error"
+#define RTMP_AMF0_COMMAND_RELEASE_STREAM        "releaseStream"
+#define RTMP_AMF0_COMMAND_FC_PUBLISH            "FCPublish"
+#define RTMP_AMF0_COMMAND_UNPUBLISH             "FCUnpublish"
+#define RTMP_AMF0_COMMAND_PUBLISH               "publish"
+#define RTMP_AMF0_DATA_SAMPLE_ACCESS            "|RtmpSampleAccess"
+
+/****************************************************************************
 *****************************************************************************
 ****************************************************************************/
-/**
-* 6.1. Chunk Format
-* Extended timestamp: 0 or 4 bytes
-* This field MUST be sent when the normal timsestamp is set to
-* 0xffffff, it MUST NOT be sent if the normal timestamp is set to
-* anything else. So for values less than 0xffffff the normal
-* timestamp field SHOULD be used in which case the extended timestamp
-* MUST NOT be present. For values greater than or equal to 0xffffff
-* the normal timestamp field MUST NOT be used and MUST be set to
-* 0xffffff and the extended timestamp MUST be sent.
-*/
-#define RTMP_EXTENDED_TIMESTAMP                 0xFFFFFF
-
-/**
-* 4.1. Message Header
-*/
-class SrsMessageHeader
-{
-public:
-    /**
-    * 3bytes.
-    * Three-byte field that contains a timestamp delta of the message.
-    * @remark, only used for decoding message from chunk stream.
-    */
-    int32_t timestamp_delta;
-    /**
-    * 3bytes.
-    * Three-byte field that represents the size of the payload in bytes.
-    * It is set in big-endian format.
-    */
-    int32_t payload_length;
-    /**
-    * 1byte.
-    * One byte field to represent the message type. A range of type IDs
-    * (1-7) are reserved for protocol control messages.
-    */
-    int8_t message_type;
-    /**
-    * 4bytes.
-    * Four-byte field that identifies the stream of the message. These
-    * bytes are set in little-endian format.
-    */
-    int32_t stream_id;
-    
-    /**
-    * Four-byte field that contains a timestamp of the message.
-    * The 4 bytes are packed in the big-endian order.
-    * @remark, used as calc timestamp when decode and encode time.
-    * @remark, we use 64bits for large time for jitter detect and hls.
-    */
-    int64_t timestamp;
-public:
-    /**
-    * get the perfered cid(chunk stream id) which sendout over.
-    * set at decoding, and canbe used for directly send message,
-    * for example, dispatch to all connections.
-    */
-    int perfer_cid;
-public:
-    SrsMessageHeader();
-    virtual ~SrsMessageHeader();
-public:
-    bool is_audio();
-    bool is_video();
-    bool is_amf0_command();
-    bool is_amf0_data();
-    bool is_amf3_command();
-    bool is_amf3_data();
-    bool is_window_ackledgement_size();
-    bool is_ackledgement();
-    bool is_set_chunk_size();
-    bool is_user_control_message();
-    bool is_set_peer_bandwidth();
-    bool is_aggregate();
-public:
-    /**
-    * create a amf0 script header, set the size and stream_id.
-    */
-    void initialize_amf0_script(int size, int stream);
-    /**
-    * create a audio header, set the size, timestamp and stream_id.
-    */
-    void initialize_audio(int size, u_int32_t time, int stream);
-    /**
-    * create a video header, set the size, timestamp and stream_id.
-    */
-    void initialize_video(int size, u_int32_t time, int stream);
-};
-
-/**
-* message is raw data RTMP message, bytes oriented,
-* protcol always recv RTMP message, and can send RTMP message or RTMP packet.
-* the common message is read from underlay protocol sdk.
-* while the shared ptr message used to copy and send.
-*/
-class SrsCommonMessage
-{
-// 4.1. Message Header
-public:
-    SrsMessageHeader header;
-// 4.2. Message Payload
-public:
-    /**
-    * current message parsed size,
-    *       size <= header.payload_length
-    * for the payload maybe sent in multiple chunks.
-    */
-    int size;
-    /**
-    * the payload of message, the SrsCommonMessage never know about the detail of payload,
-    * user must use SrsProtocol.decode_message to get concrete packet.
-    * @remark, not all message payload can be decoded to packet. for example, 
-    *       video/audio packet use raw bytes, no video/audio packet.
-    */
-    char* payload;
-public:
-    SrsCommonMessage();
-public:
-    virtual ~SrsCommonMessage();
-};
-
-/**
-* the message header for shared ptr message.
-* only the message for all msgs are same.
-*/
-struct SrsSharedMessageHeader
-{
-    /**
-    * 3bytes.
-    * Three-byte field that represents the size of the payload in bytes.
-    * It is set in big-endian format.
-    */
-    int32_t payload_length;
-    /**
-    * 1byte.
-    * One byte field to represent the message type. A range of type IDs
-    * (1-7) are reserved for protocol control messages.
-    */
-    int8_t message_type;
-    /**
-    * get the perfered cid(chunk stream id) which sendout over.
-    * set at decoding, and canbe used for directly send message,
-    * for example, dispatch to all connections.
-    */
-    int perfer_cid;
-};
-
-/**
-* shared ptr message.
-* for audio/video/data message that need less memory copy.
-* and only for output.
-*
-* create first object by constructor and create(),
-* use copy if need reference count message.
-*
-*/
-class SrsSharedPtrMessage
-{
-// 4.1. Message Header
-public:
-    // the header can shared, only set the timestamp and stream id.
-    // @see https://github.com/winlinvip/simple-rtmp-server/issues/251
-    //SrsSharedMessageHeader header;
-    /**
-    * Four-byte field that contains a timestamp of the message.
-    * The 4 bytes are packed in the big-endian order.
-    * @remark, used as calc timestamp when decode and encode time.
-    * @remark, we use 64bits for large time for jitter detect and hls.
-    */
-    int64_t timestamp;
-    /**
-    * 4bytes.
-    * Four-byte field that identifies the stream of the message. These
-    * bytes are set in big-endian format.
-    */
-    int32_t stream_id;
-// 4.2. Message Payload
-public:
-    /**
-    * current message parsed size,
-    *       size <= header.payload_length
-    * for the payload maybe sent in multiple chunks.
-    */
-    int size;
-    /**
-    * the payload of message, the SrsCommonMessage never know about the detail of payload,
-    * user must use SrsProtocol.decode_message to get concrete packet.
-    * @remark, not all message payload can be decoded to packet. for example,
-    *       video/audio packet use raw bytes, no video/audio packet.
-    */
-    char* payload;
-private:
-    class SrsSharedPtrPayload
-    {
-    public:
-        // shared message header.
-        // @see https://github.com/winlinvip/simple-rtmp-server/issues/251
-        SrsSharedMessageHeader header;
-        // actual shared payload.
-        char* payload;
-        // size of payload.
-        int size;
-        // the reference count
-        int shared_count;
-    public:
-        SrsSharedPtrPayload();
-        virtual ~SrsSharedPtrPayload();
-    };
-    SrsSharedPtrPayload* ptr;
-public:
-    SrsSharedPtrMessage();
-    virtual ~SrsSharedPtrMessage();
-public:
-    /**
-    * create shared ptr message,
-    * copy header, manage the payload of msg,
-    * set the payload to NULL to prevent double free.
-    * @remark payload of msg set to NULL if success.
-    */
-    virtual int create(SrsCommonMessage* msg);
-    /**
-    * create shared ptr message,
-    * from the header and payload.
-    * @remark user should never free the payload.
-    * @param pheader, the header to copy to the message. NULL to ignore.
-    */
-    virtual int create(SrsMessageHeader* pheader, char* payload, int size);
-    /**
-    * get current reference count.
-    * when this object created, count set to 0.
-    * if copy() this object, count increase 1.
-    * if this or copy deleted, free payload when count is 0, or count--.
-    * @remark, assert object is created.
-    */
-    virtual int count();
-    /**
-    * check perfer cid and stream id.
-    * @return whether stream id already set.
-    */
-    virtual bool check(int stream_id);
-public:
-    virtual bool is_av();
-    virtual bool is_audio();
-    virtual bool is_video();
-public:
-    /**
-    * generate the chunk header to cache.
-    * @return the size of header.
-    */
-    virtual int chunk_header(char* cache, int nb_cache, bool c0);
-public:
-    /**
-    * copy current shared ptr message, use ref-count.
-    * @remark, assert object is created.
-    */
-    virtual SrsSharedPtrMessage* copy();
-};
 
 /**
  * the decoded message payload.
@@ -408,7 +173,7 @@ private:
     /**
     * cache some frequently used chunk header.
     * cs_cache, the chunk stream cache.
-    * @see https://github.com/winlinvip/simple-rtmp-server/issues/249
+    * @see https://github.com/simple-rtmp-server/srs/issues/249
     */
     SrsChunkStream** cs_cache;
     /**
@@ -426,7 +191,7 @@ private:
     /**
     * whether auto response when recv messages.
     * default to true for it's very easy to use the protocol stack.
-    * @see: https://github.com/winlinvip/simple-rtmp-server/issues/217
+    * @see: https://github.com/simple-rtmp-server/srs/issues/217
     */
     bool auto_response_when_recv;
     /**
@@ -464,7 +229,7 @@ public:
     /**
     * set the auto response message when recv for protocol stack.
     * @param v, whether auto response message when recv message.
-    * @see: https://github.com/winlinvip/simple-rtmp-server/issues/217
+    * @see: https://github.com/simple-rtmp-server/srs/issues/217
     */
     virtual void set_auto_response(bool v);
     /**
@@ -482,7 +247,7 @@ public:
     * that is, we merge some data to read together.
     * @param v true to ename merged read.
     * @param handler the handler when merge read is enabled.
-    * @see https://github.com/winlinvip/simple-rtmp-server/issues/241
+    * @see https://github.com/simple-rtmp-server/srs/issues/241
     */
     virtual void set_merge_read(bool v, IMergeReadHandler* handler);
     /**
@@ -490,7 +255,7 @@ public:
     * @param buffer the size of buffer.
     * @remark when MR(SRS_PERF_MERGED_READ) disabled, always set to 8K.
     * @remark when buffer changed, the previous ptr maybe invalid.
-    * @see https://github.com/winlinvip/simple-rtmp-server/issues/241
+    * @see https://github.com/simple-rtmp-server/srs/issues/241
     */
     virtual void set_recv_buffer(int buffer_size);
 #endif
@@ -725,7 +490,7 @@ class SrsConnectAppPacket : public SrsPacket
 {
 public:
     /**
-    * Name of the command. Set to “connect”.
+    * Name of the command. Set to "connect".
     */
     std::string command_name;
     /**
@@ -778,8 +543,8 @@ public:
     */
     SrsAmf0Object* props;
     /**
-    * Name-value pairs that describe the response from|the server. ‘code’,
-    * ‘level’, ‘description’ are names of few among such information.
+    * Name-value pairs that describe the response from|the server. 'code',
+    * 'level', 'description' are names of few among such information.
     * @remark, never be NULL.
     */
     SrsAmf0Object* info;
@@ -887,7 +652,7 @@ class SrsCreateStreamPacket : public SrsPacket
 {
 public:
     /**
-    * Name of the command. Set to “createStream”.
+    * Name of the command. Set to "createStream".
     */
     std::string command_name;
     /**
@@ -958,7 +723,7 @@ class SrsCloseStreamPacket : public SrsPacket
 {
 public:
     /**
-    * Name of the command, set to “closeStream”.
+    * Name of the command, set to "closeStream".
     */
     std::string command_name;
     /**
@@ -1069,7 +834,7 @@ class SrsPublishPacket : public SrsPacket
 {
 public:
     /**
-    * Name of the command, set to “publish”.
+    * Name of the command, set to "publish".
     */
     std::string command_name;
     /**
@@ -1086,7 +851,7 @@ public:
     */
     std::string stream_name;
     /**
-    * Type of publishing. Set to “live”, “record”, or “append”.
+    * Type of publishing. Set to "live", "record", or "append".
     *   record: The stream is published and the data is recorded to a new file.The file
     *           is stored on the server in a subdirectory within the directory that
     *           contains the server application. If the file already exists, it is 
@@ -1122,7 +887,7 @@ class SrsPausePacket : public SrsPacket
 {
 public:
     /**
-    * Name of the command, set to “pause”.
+    * Name of the command, set to "pause".
     */
     std::string command_name;
     /**
@@ -1161,7 +926,7 @@ class SrsPlayPacket : public SrsPacket
 {
 public:
     /**
-    * Name of the command. Set to “play”.
+    * Name of the command. Set to "play".
     */
     std::string command_name;
     /**
@@ -1325,7 +1090,7 @@ public:
     SrsAmf0Any* args; // null
     /**
     * Name-value pairs that describe the response from the server. 
-    * ‘code’,‘level’, ‘description’ are names of few among such information.
+    * 'code','level', 'description' are names of few among such information.
     * @remark, never be NULL, an AMF0 object instance.
     */
     SrsAmf0Object* data;
@@ -1367,7 +1132,7 @@ public:
     SrsAmf0Any* args; // null
     /**
     * Name-value pairs that describe the response from the server.
-    * ‘code’,‘level’, ‘description’ are names of few among such information.
+    * 'code','level', 'description' are names of few among such information.
     * @remark, never be NULL, an AMF0 object instance.
     */
     SrsAmf0Object* data;
@@ -1425,7 +1190,7 @@ public:
     std::string command_name;
     /**
     * Name-value pairs that describe the response from the server.
-    * ‘code’, are names of few among such information.
+    * 'code', are names of few among such information.
     * @remark, never be NULL, an AMF0 object instance.
     */
     SrsAmf0Object* data;
@@ -1454,13 +1219,13 @@ public:
     std::string command_name;
     /**
     * whether allow access the sample of video.
-    * @see: https://github.com/winlinvip/simple-rtmp-server/issues/49
+    * @see: https://github.com/simple-rtmp-server/srs/issues/49
     * @see: http://help.adobe.com/en_US/FlashPlatform/reference/actionscript/3/flash/net/NetStream.html#videoSampleAccess
     */
     bool video_sample_access;
     /**
     * whether allow access the sample of audio.
-    * @see: https://github.com/winlinvip/simple-rtmp-server/issues/49
+    * @see: https://github.com/simple-rtmp-server/srs/issues/49
     * @see: http://help.adobe.com/en_US/FlashPlatform/reference/actionscript/3/flash/net/NetStream.html#audioSampleAccess
     */
     bool audio_sample_access;
@@ -1707,7 +1472,7 @@ enum SrcPCUCEventType
 * +------------------------------+-------------------------
 * | Event Type ( 2- bytes ) | Event Data
 * +------------------------------+-------------------------
-* Figure 5 Pay load for the ‘User Control Message’.
+* Figure 5 Pay load for the 'User Control Message'.
 */
 class SrsUserControlPacket : public SrsPacket
 {

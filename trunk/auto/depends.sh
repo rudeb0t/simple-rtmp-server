@@ -381,14 +381,14 @@ if [ $SRS_EXPORT_LIBRTMP_PROJECT = NO ]; then
         _ST_MAKE=darwin-debug && _ST_EXTRA_CFLAGS="EXTRA_CFLAGS=-DMD_HAVE_KQUEUE"
     fi
     # memory leak for linux-optimized
-    # @see: https://github.com/winlinvip/simple-rtmp-server/issues/197
+    # @see: https://github.com/simple-rtmp-server/srs/issues/197
     if [ $SRS_EMBEDED_CPU = YES ]; then
         # ok, arm specified, if the flag filed does not exists, need to rebuild.
         if [[ -f ${SRS_OBJS}/_flag.st.arm.tmp && -f ${SRS_OBJS}/st/libst.a ]]; then
             echo "st-1.9t for arm is ok.";
         else
             # TODO: FIXME: patch the bug.
-            # patch st for arm, @see: https://github.com/winlinvip/simple-rtmp-server/wiki/v1_CN_SrsLinuxArm#st-arm-bug-fix
+            # patch st for arm, @see: https://github.com/simple-rtmp-server/srs/wiki/v1_CN_SrsLinuxArm#st-arm-bug-fix
             echo "build st-1.9t for arm"; 
             (
                 rm -rf ${SRS_OBJS}/st-1.9 && cd ${SRS_OBJS} && 
@@ -426,7 +426,7 @@ fi
 # http-parser-2.1
 #####################################################################################
 # check the arm flag file, if flag changed, need to rebuild the st.
-if [ $SRS_HTTP_PARSER = YES ]; then
+if [ $SRS_HTTP_CORE = YES ]; then
     # ok, arm specified, if the flag filed does not exists, need to rebuild.
     if [ $SRS_EMBEDED_CPU = YES ]; then
         if [[ -f ${SRS_OBJS}/_flag.st.hp.tmp && -f ${SRS_OBJS}/hp/http_parser.h && -f ${SRS_OBJS}/hp/libhttp_parser.a ]]; then
@@ -504,11 +504,7 @@ if [ $__SRS_BUILD_NGINX = YES ]; then
     # srs will write ts/m3u8 file use current user,
     # nginx default use nobody, so cannot read the ts/m3u8 created by srs.
     cp ${SRS_OBJS}/nginx/conf/nginx.conf ${SRS_OBJS}/nginx/conf/nginx.conf.bk
-    if [ $OS_IS_OSX = YES ]; then
-        sed -i '' "s/^.user  nobody;/user `whoami`;/g" ${SRS_OBJS}/nginx/conf/nginx.conf
-    else
-        sed -i "s/^.user  nobody;/user `whoami`;/g" ${SRS_OBJS}/nginx/conf/nginx.conf
-    fi
+    $SED '' "s/^.user  nobody;/user `whoami`;/g" ${SRS_OBJS}/nginx/conf/nginx.conf
 fi
 
 # the demo dir.
@@ -552,7 +548,7 @@ if [ $SRS_EXPORT_LIBRTMP_PROJECT = NO ]; then
     rm -rf research/api-server/static-dir/forward && 
     mkdir -p `pwd`/${SRS_OBJS}/nginx/html/forward &&
     ln -sf `pwd`/${SRS_OBJS}/nginx/html/forward research/api-server/static-dir/forward
-    ret=$?; if [[ $ret -ne 0 ]]; then echo "link players to cherrypy static-dir failed, ret=$ret"; exit $ret; fi
+    ret=$?; if [[ $ret -ne 0 ]]; then echo "[warn] link players to cherrypy static-dir failed"; fi
 fi
 
 #####################################################################################

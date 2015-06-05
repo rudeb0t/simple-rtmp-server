@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 winlin
+Copyright (c) 2013-2015 SRS(simple-rtmp-server)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -39,7 +39,7 @@ using namespace std;
 #include <srs_app_source.hpp>
 #include <srs_app_pithy_print.hpp>
 #include <srs_core_autofree.hpp>
-#include <srs_app_kbps.hpp>
+#include <srs_protocol_kbps.hpp>
 #include <srs_rtmp_msg_array.hpp>
 #include <srs_app_utility.hpp>
 #include <srs_rtmp_amf0.hpp>
@@ -70,7 +70,7 @@ SrsEdgeIngester::SrsEdgeIngester()
     origin_index = 0;
     stream_id = 0;
     stfd = NULL;
-    pthread = new SrsThread("edge-igs", this, SRS_EDGE_INGESTER_SLEEP_US, true);
+    pthread = new SrsReusableThread2("edge-igs", this, SRS_EDGE_INGESTER_SLEEP_US);
 }
 
 SrsEdgeIngester::~SrsEdgeIngester()
@@ -171,7 +171,7 @@ int SrsEdgeIngester::ingest()
     SrsPithyPrint* pprint = SrsPithyPrint::create_edge();
     SrsAutoFree(SrsPithyPrint, pprint);
 
-    while (pthread->can_loop()) {
+    while (!pthread->interrupted()) {
         pprint->elapse();
         
         // pithy print
@@ -218,7 +218,7 @@ int SrsEdgeIngester::connect_app(string ep_server, string ep_port)
     }
     
     // notify server the edge identity,
-    // @see https://github.com/winlinvip/simple-rtmp-server/issues/147
+    // @see https://github.com/simple-rtmp-server/srs/issues/147
     SrsAmf0Object* data = req->args;
     data->set("srs_sig", SrsAmf0Any::str(RTMP_SIG_SRS_KEY));
     data->set("srs_server", SrsAmf0Any::str(RTMP_SIG_SRS_SERVER));
@@ -242,7 +242,7 @@ int SrsEdgeIngester::connect_app(string ep_server, string ep_port)
     data->set("srs_server_ip", SrsAmf0Any::str(local_ip.c_str()));
     
     // support vhost tranform for edge,
-    // @see https://github.com/winlinvip/simple-rtmp-server/issues/372
+    // @see https://github.com/simple-rtmp-server/srs/issues/372
     std::string vhost = _srs_config->get_vhost_edge_transform_vhost(req->vhost);
     vhost = srs_string_replace(vhost, "[vhost]", req->vhost);
     // generate the tcUrl
@@ -255,7 +255,7 @@ int SrsEdgeIngester::connect_app(string ep_server, string ep_port)
     req->tcUrl = tc_url;
     
     // upnode server identity will show in the connect_app of client.
-    // @see https://github.com/winlinvip/simple-rtmp-server/issues/160
+    // @see https://github.com/simple-rtmp-server/srs/issues/160
     // the debug_srs_upnode is config in vhost and default to true.
     bool debug_srs_upnode = _srs_config->get_debug_srs_upnode(req->vhost);
     if ((ret = client->connect_app(req->app, tc_url, req, debug_srs_upnode)) != ERROR_SUCCESS) {
@@ -338,7 +338,7 @@ int SrsEdgeIngester::connect_server(string& ep_server, string& ep_port)
     
     SrsConfDirective* conf = _srs_config->get_vhost_edge_origin(_req->vhost);
     
-    // @see https://github.com/winlinvip/simple-rtmp-server/issues/79
+    // @see https://github.com/simple-rtmp-server/srs/issues/79
     // when origin is error, for instance, server is shutdown,
     // then user remove the vhost then reload, the conf is empty.
     if (!conf) {
@@ -397,7 +397,7 @@ SrsEdgeForwarder::SrsEdgeForwarder()
     origin_index = 0;
     stream_id = 0;
     stfd = NULL;
-    pthread = new SrsThread("edge-fwr", this, SRS_EDGE_FORWARDER_SLEEP_US, true);
+    pthread = new SrsReusableThread2("edge-fwr", this, SRS_EDGE_FORWARDER_SLEEP_US);
     queue = new SrsMessageQueue();
     send_error_code = ERROR_SUCCESS;
 }
@@ -489,7 +489,7 @@ int SrsEdgeForwarder::cycle()
     
     SrsMessageArray msgs(SYS_MAX_EDGE_SEND_MSGS);
 
-    while (pthread->can_loop()) {
+    while (!pthread->interrupted()) {
         if (send_error_code != ERROR_SUCCESS) {
             st_usleep(SRS_EDGE_FORWARDER_ERROR_US);
             continue;
@@ -649,7 +649,7 @@ int SrsEdgeForwarder::connect_app(string ep_server, string ep_port)
     }
     
     // notify server the edge identity,
-    // @see https://github.com/winlinvip/simple-rtmp-server/issues/147
+    // @see https://github.com/simple-rtmp-server/srs/issues/147
     SrsAmf0Object* data = req->args;
     data->set("srs_sig", SrsAmf0Any::str(RTMP_SIG_SRS_KEY));
     data->set("srs_server", SrsAmf0Any::str(RTMP_SIG_SRS_SERVER));
@@ -673,7 +673,7 @@ int SrsEdgeForwarder::connect_app(string ep_server, string ep_port)
     data->set("srs_server_ip", SrsAmf0Any::str(local_ip.c_str()));
     
     // support vhost tranform for edge,
-    // @see https://github.com/winlinvip/simple-rtmp-server/issues/372
+    // @see https://github.com/simple-rtmp-server/srs/issues/372
     std::string vhost = _srs_config->get_vhost_edge_transform_vhost(req->vhost);
     vhost = srs_string_replace(vhost, "[vhost]", req->vhost);
     // generate the tcUrl
@@ -686,7 +686,7 @@ int SrsEdgeForwarder::connect_app(string ep_server, string ep_port)
     req->tcUrl = tc_url;
     
     // upnode server identity will show in the connect_app of client.
-    // @see https://github.com/winlinvip/simple-rtmp-server/issues/160
+    // @see https://github.com/simple-rtmp-server/srs/issues/160
     // the debug_srs_upnode is config in vhost and default to true.
     bool debug_srs_upnode = _srs_config->get_debug_srs_upnode(req->vhost);
     if ((ret = client->connect_app(req->app, tc_url, req, debug_srs_upnode)) != ERROR_SUCCESS) {
@@ -823,7 +823,7 @@ int SrsPublishEdge::on_client_publish()
         return ret;
     }
     
-    // @see https://github.com/winlinvip/simple-rtmp-server/issues/180
+    // @see https://github.com/simple-rtmp-server/srs/issues/180
     // to avoid multiple publish the same stream on the same edge,
     // directly enter the publish stage.
     if (true) {
@@ -835,7 +835,7 @@ int SrsPublishEdge::on_client_publish()
     // start to forward stream to origin.
     ret = forwarder->start();
     
-    // @see https://github.com/winlinvip/simple-rtmp-server/issues/180
+    // @see https://github.com/simple-rtmp-server/srs/issues/180
     // when failed, revert to init
     if (ret != ERROR_SUCCESS) {
         SrsEdgeState pstate = state;

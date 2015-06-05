@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 winlin
+Copyright (c) 2013-2015 SRS(simple-rtmp-server)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -265,8 +265,8 @@ int SrsMpegtsOverUdp::on_ts_message(SrsTsMessage* msg)
     //      because when audio stream_number is 0, the elementary is ADTS(aac-mp4a-format-ISO_IEC_14496-3+2001.pdf, page 75, 1.A.2.2 ADTS).
 
     // about the bytes of PES_packet_data_byte, defined in hls-mpeg-ts-iso13818-1.pdf, page 58
-    // PES_packet_data_byte ¨C PES_packet_data_bytes shall be contiguous bytes of data from the elementary stream
-    // indicated by the packet¡¯s stream_id or PID. When the elementary stream data conforms to ITU-T
+    // PES_packet_data_byte "C PES_packet_data_bytes shall be contiguous bytes of data from the elementary stream
+    // indicated by the packets stream_id or PID. When the elementary stream data conforms to ITU-T
     // Rec. H.262 | ISO/IEC 13818-2 or ISO/IEC 13818-3, the PES_packet_data_bytes shall be byte aligned to the bytes of this
     // Recommendation | International Standard. The byte-order of the elementary stream shall be preserved. The number of
     // PES_packet_data_bytes, N, is specified by the PES_packet_length field. N shall be equal to the value indicated in the
@@ -277,12 +277,12 @@ int SrsMpegtsOverUdp::on_ts_message(SrsTsMessage* msg)
     // PES_packet_data_byte field are user definable and will not be specified by ITU-T | ISO/IEC in the future.
 
     // about the bytes of stream_id, define in  hls-mpeg-ts-iso13818-1.pdf, page 49
-    // stream_id ¨C In Program Streams, the stream_id specifies the type and number of the elementary stream as defined by the
+    // stream_id "C In Program Streams, the stream_id specifies the type and number of the elementary stream as defined by the
     // stream_id Table 2-18. In Transport Streams, the stream_id may be set to any valid value which correctly describes the
     // elementary stream type as defined in Table 2-18. In Transport Streams, the elementary stream type is specified in the
     // Program Specific Information as specified in 2.4.4.
 
-    // about the stream_id table, define in Table 2-18 ¨C Stream_id assignments, hls-mpeg-ts-iso13818-1.pdf, page 52.
+    // about the stream_id table, define in Table 2-18 "C Stream_id assignments, hls-mpeg-ts-iso13818-1.pdf, page 52.
     // 
     // 110x xxxx
     // ISO/IEC 13818-3 or ISO/IEC 11172-3 or ISO/IEC 13818-7 or ISO/IEC
@@ -461,7 +461,7 @@ int SrsMpegtsOverUdp::write_h264_ipb_frame(char* frame, int frame_size, u_int32_
     int ret = ERROR_SUCCESS;
     
     // when sps or pps not sent, ignore the packet.
-    // @see https://github.com/winlinvip/simple-rtmp-server/issues/203
+    // @see https://github.com/simple-rtmp-server/srs/issues/203
     if (!h264_sps_pps_sent) {
         return ERROR_H264_DROP_BEFORE_SPS_PPS;
     }
@@ -672,7 +672,7 @@ int SrsMpegtsOverUdp::connect_app(string ep_server, string ep_port)
     }
     
     // notify server the edge identity,
-    // @see https://github.com/winlinvip/simple-rtmp-server/issues/147
+    // @see https://github.com/simple-rtmp-server/srs/issues/147
     SrsAmf0Object* data = req->args;
     data->set("srs_sig", SrsAmf0Any::str(RTMP_SIG_SRS_KEY));
     data->set("srs_server", SrsAmf0Any::str(RTMP_SIG_SRS_KEY" "RTMP_SIG_SRS_VERSION" ("RTMP_SIG_SRS_URL_SHORT")"));
@@ -700,7 +700,7 @@ int SrsMpegtsOverUdp::connect_app(string ep_server, string ep_port)
     std::string tc_url = srs_generate_tc_url(ep_server, req->vhost, req->app, ep_port, param);
     
     // upnode server identity will show in the connect_app of client.
-    // @see https://github.com/winlinvip/simple-rtmp-server/issues/160
+    // @see https://github.com/simple-rtmp-server/srs/issues/160
     // the debug_srs_upnode is config in vhost and default to true.
     bool debug_srs_upnode = _srs_config->get_debug_srs_upnode(req->vhost);
     if ((ret = client->connect_app(req->app, tc_url, req, debug_srs_upnode)) != ERROR_SUCCESS) {

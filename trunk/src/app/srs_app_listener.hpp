@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 winlin
+Copyright (c) 2013-2015 SRS(simple-rtmp-server)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -47,6 +47,12 @@ public:
     virtual ~ISrsUdpHandler();
 public:
     /**
+     * when fd changed, for instance, reload the listen port,
+     * notify the handler and user can do something.
+     */
+    virtual int on_stfd_change(st_netfd_t fd);
+public:
+    /**
     * when udp listener got a udp packet, notice server to process it.
     * @param type, the client type, used to create concrete connection,
     *       for instance RTMP connection to serve client.
@@ -76,12 +82,12 @@ public:
 /**
 * bind udp port, start thread to recv packet and handler it.
 */
-class SrsUdpListener : public ISrsThreadHandler
+class SrsUdpListener : public ISrsReusableThreadHandler
 {
 private:
     int _fd;
-    st_netfd_t stfd;
-    SrsThread* pthread;
+    st_netfd_t _stfd;
+    SrsReusableThread* pthread;
 private:
     char* buf;
     int nb_buf;
@@ -94,9 +100,10 @@ public:
     virtual ~SrsUdpListener();
 public:
     virtual int fd();
+    virtual st_netfd_t stfd();
 public:
     virtual int listen();
-// interface ISrsThreadHandler.
+// interface ISrsReusableThreadHandler.
 public:
     virtual int cycle();
 };
@@ -104,12 +111,12 @@ public:
 /**
 * bind and listen tcp port, use handler to process the client.
 */
-class SrsTcpListener : public ISrsThreadHandler
+class SrsTcpListener : public ISrsReusableThreadHandler
 {
 private:
     int _fd;
-    st_netfd_t stfd;
-    SrsThread* pthread;
+    st_netfd_t _stfd;
+    SrsReusableThread* pthread;
 private:
     ISrsTcpHandler* handler;
     std::string ip;
@@ -121,7 +128,7 @@ public:
     virtual int fd();
 public:
     virtual int listen();
-// interface ISrsThreadHandler.
+// interface ISrsReusableThreadHandler.
 public:
     virtual int cycle();
 };

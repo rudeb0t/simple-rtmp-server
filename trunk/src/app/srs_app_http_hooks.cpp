@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 winlin
+Copyright (c) 2013-2015 SRS(simple-rtmp-server)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -31,13 +31,13 @@ using namespace std;
 #include <srs_kernel_error.hpp>
 #include <srs_rtmp_sdk.hpp>
 #include <srs_app_st_socket.hpp>
-#include <srs_app_http.hpp>
 #include <srs_app_json.hpp>
 #include <srs_app_dvr.hpp>
 #include <srs_app_http_client.hpp>
 #include <srs_core_autofree.hpp>
 #include <srs_app_config.hpp>
 #include <srs_kernel_utility.hpp>
+#include <srs_app_http_conn.hpp>
 
 #define SRS_HTTP_RESPONSE_OK    SRS_XSTR(ERROR_SUCCESS)
 
@@ -371,11 +371,11 @@ int SrsHttpHooks::on_hls_notify(std::string url, SrsRequest* req, std::string ts
     }
     srs_warn("GET %s", path.c_str());
     
-    SrsHttpMessage* msg = NULL;
+    ISrsHttpMessage* msg = NULL;
     if ((ret = http.get(path.c_str(), "", &msg)) != ERROR_SUCCESS) {
         return ret;
     }
-    SrsAutoFree(SrsHttpMessage, msg);
+    SrsAutoFree(ISrsHttpMessage, msg);
     
     int nb_buf = srs_min(nb_notify, SRS_HTTP_READ_BUFFER);
     char* buf = new char[nb_buf];
@@ -416,11 +416,11 @@ int SrsHttpHooks::do_post(std::string url, std::string req, int& code, string& r
         return ret;
     }
     
-    SrsHttpMessage* msg = NULL;
+    ISrsHttpMessage* msg = NULL;
     if ((ret = http.post(uri.get_path(), req, &msg)) != ERROR_SUCCESS) {
         return ret;
     }
-    SrsAutoFree(SrsHttpMessage, msg);
+    SrsAutoFree(ISrsHttpMessage, msg);
     
     code = msg->status_code();
     if ((ret = msg->body_read_all(res)) != ERROR_SUCCESS) {
@@ -428,7 +428,7 @@ int SrsHttpHooks::do_post(std::string url, std::string req, int& code, string& r
     }
     
     // ensure the http status is ok.
-    // https://github.com/winlinvip/simple-rtmp-server/issues/158
+    // https://github.com/simple-rtmp-server/srs/issues/158
     if (code != SRS_CONSTS_HTTP_OK) {
         return ERROR_HTTP_STATUS_INVLIAD;
     }

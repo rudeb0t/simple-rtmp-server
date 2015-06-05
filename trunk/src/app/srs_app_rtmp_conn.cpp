@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 winlin
+Copyright (c) 2013-2015 SRS(simple-rtmp-server)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -41,7 +41,6 @@ using namespace std;
 #include <srs_app_config.hpp>
 #include <srs_app_refer.hpp>
 #include <srs_app_hls.hpp>
-#include <srs_app_http.hpp>
 #include <srs_app_bandwidth.hpp>
 #include <srs_app_st_socket.hpp>
 #include <srs_app_http_hooks.hpp>
@@ -75,12 +74,13 @@ using namespace std;
 // when edge timeout, retry next.
 #define SRS_EDGE_TOKEN_TRAVERSE_TIMEOUT_US (int64_t)(3*1000*1000LL)
 
-SrsRtmpConn::SrsRtmpConn(SrsServer* srs_server, st_netfd_t client_stfd)
-    : SrsConnection(srs_server, client_stfd)
+SrsRtmpConn::SrsRtmpConn(SrsServer* svr, st_netfd_t c)
+    : SrsConnection(svr, c)
 {
+    server = svr;
     req = new SrsRequest();
     res = new SrsResponse();
-    skt = new SrsStSocket(client_stfd);
+    skt = new SrsStSocket(c);
     rtmp = new SrsRtmpServer(skt);
     refer = new SrsRefer();
     bandwidth = new SrsBandwidth();
@@ -295,7 +295,7 @@ int SrsRtmpConn::service_cycle()
     }
     
     // do token traverse before serve it.
-    // @see https://github.com/winlinvip/simple-rtmp-server/pull/239
+    // @see https://github.com/simple-rtmp-server/srs/pull/239
     if (true) {
         bool vhost_is_edge = _srs_config->get_vhost_is_edge(req->vhost);
         bool edge_traverse = _srs_config->get_vhost_edge_token_traverse(req->vhost);
@@ -348,7 +348,7 @@ int SrsRtmpConn::service_cycle()
         // logical accept and retry stream service.
         if (ret == ERROR_CONTROL_RTMP_CLOSE) {
             // TODO: FIXME: use ping message to anti-death of socket.
-            // @see: https://github.com/winlinvip/simple-rtmp-server/issues/39
+            // @see: https://github.com/simple-rtmp-server/srs/issues/39
             // set timeout to a larger value, for user paused.
             rtmp->set_recv_timeout(SRS_PAUSED_RECV_TIMEOUT_US);
             rtmp->set_send_timeout(SRS_PAUSED_SEND_TIMEOUT_US);
@@ -582,7 +582,7 @@ int SrsRtmpConn::playing(SrsSource* source)
     srs_verbose("consumer created success.");
     
     // use isolate thread to recv, 
-    // @see: https://github.com/winlinvip/simple-rtmp-server/issues/217
+    // @see: https://github.com/simple-rtmp-server/srs/issues/217
     SrsQueueRecvThread trd(consumer, rtmp, SRS_PERF_MW_SLEEP);
     
     // start isolate recv thread.
@@ -640,8 +640,8 @@ int SrsRtmpConn::do_playing(SrsSource* source, SrsConsumer* consumer, SrsQueueRe
         pprint->elapse();
 
         // to use isolate thread to recv, can improve about 33% performance.
-        // @see: https://github.com/winlinvip/simple-rtmp-server/issues/196
-        // @see: https://github.com/winlinvip/simple-rtmp-server/issues/217
+        // @see: https://github.com/simple-rtmp-server/srs/issues/196
+        // @see: https://github.com/simple-rtmp-server/srs/issues/217
         while (!trd->empty()) {
             SrsCommonMessage* msg = trd->pump();
             srs_verbose("pump client message to process.");
@@ -667,8 +667,8 @@ int SrsRtmpConn::do_playing(SrsSource* source, SrsConsumer* consumer, SrsQueueRe
         srs_verbose("send thread now=%"PRId64"us, wait %dms", srs_update_system_time_ms(), mw_sleep);
         
         // wait for message to incoming.
-        // @see https://github.com/winlinvip/simple-rtmp-server/issues/251
-        // @see https://github.com/winlinvip/simple-rtmp-server/issues/257
+        // @see https://github.com/simple-rtmp-server/srs/issues/251
+        // @see https://github.com/simple-rtmp-server/srs/issues/257
         if (realtime) {
             // for realtime, min required msgs is 0, send when got one+ msgs.
             consumer->wait(0, mw_sleep);
@@ -750,7 +750,7 @@ int SrsRtmpConn::do_playing(SrsSource* source, SrsConsumer* consumer, SrsQueueRe
         }
         
         // if duration specified, and exceed it, stop play live.
-        // @see: https://github.com/winlinvip/simple-rtmp-server/issues/45
+        // @see: https://github.com/simple-rtmp-server/srs/issues/45
         if (user_specified_duration_to_stop) {
             if (duration >= (int64_t)req->duration) {
                 ret = ERROR_RTMP_DURATION_EXCEED;
@@ -775,7 +775,7 @@ int SrsRtmpConn::fmle_publishing(SrsSource* source)
     }
 
     // use isolate thread to recv,
-    // @see: https://github.com/winlinvip/simple-rtmp-server/issues/237
+    // @see: https://github.com/simple-rtmp-server/srs/issues/237
     SrsPublishRecvThread trd(rtmp, req, 
         st_netfd_fileno(stfd), 0, this, source, true, vhost_is_edge);
 
@@ -810,7 +810,7 @@ int SrsRtmpConn::flash_publishing(SrsSource* source)
     }
 
     // use isolate thread to recv,
-    // @see: https://github.com/winlinvip/simple-rtmp-server/issues/237
+    // @see: https://github.com/simple-rtmp-server/srs/issues/237
     SrsPublishRecvThread trd(rtmp, req, 
         st_netfd_fileno(stfd), 0, this, source, true, vhost_is_edge);
 
@@ -1039,7 +1039,7 @@ int SrsRtmpConn::process_play_control_msg(SrsConsumer* consumer, SrsCommonMessag
     SrsAutoFree(SrsPacket, pkt);
     
     // for jwplayer/flowplayer, which send close as pause message.
-    // @see https://github.com/winlinvip/simple-rtmp-server/issues/6
+    // @see https://github.com/simple-rtmp-server/srs/issues/6
     SrsCloseStreamPacket* close = dynamic_cast<SrsCloseStreamPacket*>(pkt);
     if (close) {
         ret = ERROR_CONTROL_RTMP_CLOSE;
@@ -1049,7 +1049,7 @@ int SrsRtmpConn::process_play_control_msg(SrsConsumer* consumer, SrsCommonMessag
     
     // call msg,
     // support response null first,
-    // @see https://github.com/winlinvip/simple-rtmp-server/issues/106
+    // @see https://github.com/simple-rtmp-server/srs/issues/106
     // TODO: FIXME: response in right way, or forward in edge mode.
     SrsCallPacket* call = dynamic_cast<SrsCallPacket*>(pkt);
     if (call) {
@@ -1067,24 +1067,24 @@ int SrsRtmpConn::process_play_control_msg(SrsConsumer* consumer, SrsCommonMessag
         return ret;
     }
     
-    // pause or other msg.
+    // pause
     SrsPausePacket* pause = dynamic_cast<SrsPausePacket*>(pkt);
-    if (!pause) {
-        srs_info("ignore all amf0/amf3 command except pause.");
+    if (pause) {
+        if ((ret = rtmp->on_play_client_pause(res->stream_id, pause->is_pause)) != ERROR_SUCCESS) {
+            srs_error("rtmp process play client pause failed. ret=%d", ret);
+            return ret;
+        }
+
+        if ((ret = consumer->on_play_client_pause(pause->is_pause)) != ERROR_SUCCESS) {
+            srs_error("consumer process play client pause failed. ret=%d", ret);
+            return ret;
+        }
+        srs_info("process pause success, is_pause=%d, time=%d.", pause->is_pause, pause->time_ms);
         return ret;
     }
     
-    if ((ret = rtmp->on_play_client_pause(res->stream_id, pause->is_pause)) != ERROR_SUCCESS) {
-        srs_error("rtmp process play client pause failed. ret=%d", ret);
-        return ret;
-    }
-    
-    if ((ret = consumer->on_play_client_pause(pause->is_pause)) != ERROR_SUCCESS) {
-        srs_error("consumer process play client pause failed. ret=%d", ret);
-        return ret;
-    }
-    srs_info("process pause success, is_pause=%d, time=%d.", pause->is_pause, pause->time_ms);
-    
+    // other msg.
+    srs_info("ignore all amf0/amf3 command except pause and video control.");
     return ret;
 }
 

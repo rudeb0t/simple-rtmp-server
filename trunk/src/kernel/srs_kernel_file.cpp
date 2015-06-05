@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 winlin
+Copyright (c) 2013-2015 SRS(simple-rtmp-server)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -23,13 +23,14 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include <srs_kernel_file.hpp>
 
-// for srs-librtmp, @see https://github.com/winlinvip/simple-rtmp-server/issues/213
+// for srs-librtmp, @see https://github.com/simple-rtmp-server/srs/issues/213
 #ifndef _WIN32
 #include <unistd.h>
 #endif
 
 #include <fcntl.h>
 #include <sstream>
+#include <sys/uio.h>
 using namespace std;
 
 #include <srs_kernel_log.hpp>
@@ -139,6 +140,27 @@ int SrsFileWriter::write(void* buf, size_t count, ssize_t* pnwrite)
     }
     
     if (pnwrite != NULL) {
+        *pnwrite = nwrite;
+    }
+    
+    return ret;
+}
+
+int SrsFileWriter::writev(iovec* iov, int iovcnt, ssize_t* pnwrite)
+{
+    int ret = ERROR_SUCCESS;
+    
+    ssize_t nwrite = 0;
+    for (int i = 0; i < iovcnt; i++) {
+        iovec* piov = iov + i;
+        ssize_t this_nwrite = 0;
+        if ((ret = write(piov->iov_base, piov->iov_len, &this_nwrite)) != ERROR_SUCCESS) {
+            return ret;
+        }
+        nwrite += this_nwrite;
+    }
+    
+    if (pnwrite) {
         *pnwrite = nwrite;
     }
     

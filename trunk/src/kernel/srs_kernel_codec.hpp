@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 winlin
+Copyright (c) 2013-2015 SRS(simple-rtmp-server)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -135,6 +135,9 @@ enum SrsCodecAudio
 {
     // set to the max value to reserved, for array map.
     SrsCodecAudioReserved1                = 16,
+    
+    // for user to disable audio, for example, use pure video hls.
+    SrsCodecAudioDisabled                   = 17,
     
     SrsCodecAudioLinearPCMPlatformEndian             = 0,
     SrsCodecAudioADPCM                                 = 1,
@@ -276,7 +279,7 @@ enum SrsCodecAudioSoundType
 };
 
 /**
- * Table 7-1 – NAL unit type codes, syntax element categories, and NAL unit type classes
+ * Table 7-1 - NAL unit type codes, syntax element categories, and NAL unit type classes
  * H.264-AVC-ISO_IEC_14496-10-2012.pdf, page 83.
  */
 enum SrsAvcNaluType
@@ -426,7 +429,7 @@ enum SrsAvcPayloadFormat
 
 /**
 * the aac profile, for ADTS(HLS/TS)
-* @see https://github.com/winlinvip/simple-rtmp-server/issues/310
+* @see https://github.com/simple-rtmp-server/srs/issues/310
 */
 enum SrsAacProfile
 {
@@ -448,7 +451,7 @@ enum SrsAacObjectType
 {
     SrsAacObjectTypeReserved = 0,
     
-    // Table 1.1 – Audio Object Type definition
+    // Table 1.1 - Audio Object Type definition
     // @see @see aac-mp4a-format-ISO_IEC_14496-3+2001.pdf, page 23
     SrsAacObjectTypeAacMain = 1,
     SrsAacObjectTypeAacLC = 2,

@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 winlin
+Copyright (c) 2013-2015 SRS(simple-rtmp-server)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -49,6 +49,36 @@ class SrsAmf0Object;
 class IMergeReadHandler;
 
 /**
+ * the signature for packets to client.
+ */
+#define RTMP_SIG_FMS_VER                        "3,5,3,888"
+#define RTMP_SIG_AMF0_VER                       0
+#define RTMP_SIG_CLIENT_ID                      "ASAICiss"
+
+/**
+ * onStatus consts.
+ */
+#define StatusLevel                             "level"
+#define StatusCode                              "code"
+#define StatusDescription                       "description"
+#define StatusDetails                           "details"
+#define StatusClientId                          "clientid"
+// status value
+#define StatusLevelStatus                       "status"
+// status error
+#define StatusLevelError                        "error"
+// code value
+#define StatusCodeConnectSuccess                "NetConnection.Connect.Success"
+#define StatusCodeConnectRejected               "NetConnection.Connect.Rejected"
+#define StatusCodeStreamReset                   "NetStream.Play.Reset"
+#define StatusCodeStreamStart                   "NetStream.Play.Start"
+#define StatusCodeStreamPause                   "NetStream.Pause.Notify"
+#define StatusCodeStreamUnpause                 "NetStream.Unpause.Notify"
+#define StatusCodePublishStart                  "NetStream.Publish.Start"
+#define StatusCodeDataStart                     "NetStream.Data.Start"
+#define StatusCodeUnpublishSuccess              "NetStream.Unpublish.Success"
+
+/**
 * the original request from client.
 */
 class SrsRequest
@@ -85,12 +115,12 @@ public:
     std::string stream;
     // for play live stream, 
     // used to specified the stop when exceed the duration.
-    // @see https://github.com/winlinvip/simple-rtmp-server/issues/45
+    // @see https://github.com/simple-rtmp-server/srs/issues/45
     // in ms.
     double duration;
     // the token in the connect request,
     // used for edge traverse to origin authentication,
-    // @see https://github.com/winlinvip/simple-rtmp-server/issues/104
+    // @see https://github.com/simple-rtmp-server/srs/issues/104
     SrsAmf0Object* args;
 public:
     SrsRequest();
@@ -343,7 +373,7 @@ public:
     /**
     * set the auto response message when recv for protocol stack.
     * @param v, whether auto response message when recv message.
-    * @see: https://github.com/winlinvip/simple-rtmp-server/issues/217
+    * @see: https://github.com/simple-rtmp-server/srs/issues/217
     */
     virtual void set_auto_response(bool v);
 #ifdef SRS_PERF_MERGED_READ
@@ -353,7 +383,7 @@ public:
     * that is, we merge some data to read together.
     * @param v true to ename merged read.
     * @param handler the handler when merge read is enabled.
-    * @see https://github.com/winlinvip/simple-rtmp-server/issues/241
+    * @see https://github.com/simple-rtmp-server/srs/issues/241
     */
     virtual void set_merge_read(bool v, IMergeReadHandler* handler);
     /**
@@ -361,7 +391,7 @@ public:
     * @param buffer the size of buffer.
     * @remark when MR(SRS_PERF_MERGED_READ) disabled, always set to 8K.
     * @remark when buffer changed, the previous ptr maybe invalid.
-    * @see https://github.com/winlinvip/simple-rtmp-server/issues/241
+    * @see https://github.com/simple-rtmp-server/srs/issues/241
     */
     virtual void set_recv_buffer(int buffer_size);
 #endif
@@ -416,7 +446,7 @@ public:
     * @param stream_id, the stream id of packet to send over, 0 for control message.
     *
     * @remark performance issue, to support 6k+ 250kbps client,
-    *       @see https://github.com/winlinvip/simple-rtmp-server/issues/194
+    *       @see https://github.com/simple-rtmp-server/srs/issues/194
     */
     virtual int send_and_free_messages(SrsSharedPtrMessage** msgs, int nb_msgs, int stream_id);
     /**

@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 winlin
+Copyright (c) 2013-2015 SRS(simple-rtmp-server)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -21,12 +21,9 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-#include <srs_app_kbps.hpp>
+#include <srs_protocol_kbps.hpp>
 
 #include <srs_kernel_utility.hpp>
-#include <srs_app_st.hpp>
-
-#define _SRS_BANDWIDTH_LIMIT_INTERVAL_MS 100
 
 SrsKbpsSample::SrsKbpsSample()
 {
@@ -77,22 +74,22 @@ void SrsKbpsSlice::sample()
     }
     
     if (now - sample_30s.time > 30 * 1000) {
-        sample_30s.kbps = (total_bytes - sample_30s.bytes) * 8 / (now - sample_30s.time);
+        sample_30s.kbps = (int)((total_bytes - sample_30s.bytes) * 8 / (now - sample_30s.time));
         sample_30s.time = now;
         sample_30s.bytes = total_bytes;
     }
     if (now - sample_1m.time > 60 * 1000) {
-        sample_1m.kbps = (total_bytes - sample_1m.bytes) * 8 / (now - sample_1m.time);
+        sample_1m.kbps = (int)((total_bytes - sample_1m.bytes) * 8 / (now - sample_1m.time));
         sample_1m.time = now;
         sample_1m.bytes = total_bytes;
     }
     if (now - sample_5m.time > 300 * 1000) {
-        sample_5m.kbps = (total_bytes - sample_5m.bytes) * 8 / (now - sample_5m.time);
+        sample_5m.kbps = (int)((total_bytes - sample_5m.bytes) * 8 / (now - sample_5m.time));
         sample_5m.time = now;
         sample_5m.bytes = total_bytes;
     }
     if (now - sample_60m.time > 3600 * 1000) {
-        sample_60m.kbps = (total_bytes - sample_60m.bytes) * 8 / (now - sample_60m.time);
+        sample_60m.kbps = (int)((total_bytes - sample_60m.bytes) * 8 / (now - sample_60m.time));
         sample_60m.time = now;
         sample_60m.bytes = total_bytes;
     }
@@ -160,7 +157,7 @@ int SrsKbps::get_send_kbps()
         return 0;
     }
     int64_t bytes = get_send_bytes();
-    return bytes * 8 / duration;
+    return (int)(bytes * 8 / duration);
 }
 
 int SrsKbps::get_recv_kbps()
@@ -170,7 +167,7 @@ int SrsKbps::get_recv_kbps()
         return 0;
     }
     int64_t bytes = get_recv_bytes();
-    return bytes * 8 / duration;
+    return (int)(bytes * 8 / duration);
 }
 
 int SrsKbps::get_send_kbps_30s()
@@ -252,42 +249,4 @@ void SrsKbps::sample()
     is.sample();
     os.sample();
 }
-
-SrsKbpsLimit::SrsKbpsLimit(SrsKbps* kbps, int limit_kbps)
-{
-    _kbps = kbps;
-    _limit_kbps = limit_kbps;
-}
-
-SrsKbpsLimit::~SrsKbpsLimit()
-{
-}
-
-int SrsKbpsLimit::limit_kbps()
-{
-    return _limit_kbps;
-}
-
-void SrsKbpsLimit::recv_limit()
-{
-    _kbps->sample();
-    
-    while (_kbps->get_recv_kbps() > _limit_kbps) {
-        _kbps->sample();
-        
-        st_usleep(_SRS_BANDWIDTH_LIMIT_INTERVAL_MS * 1000);
-    }
-}
-
-void SrsKbpsLimit::send_limit()
-{
-    _kbps->sample();
-    
-    while (_kbps->get_send_kbps() > _limit_kbps) {
-        _kbps->sample();
-        
-        st_usleep(_SRS_BANDWIDTH_LIMIT_INTERVAL_MS * 1000);
-    }
-}
-
 

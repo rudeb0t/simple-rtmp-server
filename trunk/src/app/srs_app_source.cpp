@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 winlin
+Copyright (c) 2013-2015 SRS(simple-rtmp-server)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -45,6 +45,7 @@ using namespace std;
 #include <srs_app_hds.hpp>
 #include <srs_app_statistic.hpp>
 #include <srs_core_autofree.hpp>
+#include <srs_rtmp_utility.hpp>
 
 #define CONST_MAX_JITTER_MS         500
 #define DEFAULT_FRAME_TIME_MS         40
@@ -356,52 +357,49 @@ int SrsMessageQueue::dump_packets(SrsConsumer* consumer, bool atc, int tba, int 
 
 void SrsMessageQueue::shrink()
 {
-    int iframe_index = -1;
+    SrsSharedPtrMessage* video_sh = NULL;
+    SrsSharedPtrMessage* audio_sh = NULL;
+    int msgs_size = (int)msgs.size();
     
-    // issue the first iframe.
-    // skip the first frame, whatever the type of it,
-    // for when we shrinked, the first is the iframe,
-    // we will directly remove the gop next time.
-    for (int i = 1; i < (int)msgs.size(); i++) {
+    // remove all msg
+    // igone the sequence header
+    for (int i = 0; i < (int)msgs.size(); i++) {
         SrsSharedPtrMessage* msg = msgs.at(i);
-        
-        if (msg->is_video()) {
-            if (SrsFlvCodec::video_is_keyframe(msg->payload, msg->size)) {
-                // the max frame index to remove.
-                iframe_index = i;
-                
-                // set the start time, we will remove until this frame.
-                av_start_time = msg->timestamp;
-                
-                break;
-            }
+
+        if (msg->is_video() && SrsFlvCodec::video_is_sequence_header(msg->payload, msg->size)) {
+            srs_freep(video_sh);
+            video_sh = msg;
+            continue;
         }
+        else if (msg->is_audio() && SrsFlvCodec::audio_is_sequence_header(msg->payload, msg->size)) {
+            srs_freep(audio_sh);
+            audio_sh = msg;
+            continue;
+        }
+
+        srs_freep(msg);
     }
-    
-    // no iframe, for audio, clear the queue.
-    // it is ok to clear for audio, for the shrink tell us the queue is full.
-    // for video, we clear util the I-Frame, for the decoding must start from I-frame,
-    // for audio, it's ok to clear any data, also we can clear the whole queue.
-    // @see: https://github.com/winlinvip/simple-rtmp-server/issues/134
-    if (iframe_index < 0) {
-        clear();
-        return;
+    msgs.clear();  
+
+    // update av_start_time
+    av_start_time = av_end_time;
+    //push_back secquence header and update timestamp
+    if (video_sh) {
+        video_sh->timestamp = av_end_time;
+        msgs.push_back(video_sh);
+    }
+    if (audio_sh) {
+        audio_sh->timestamp = av_end_time;
+        msgs.push_back(audio_sh);
     }
     
     if (_ignore_shrink) {
         srs_info("shrink the cache queue, size=%d, removed=%d, max=%.2f", 
-            (int)msgs.size(), iframe_index, queue_size_ms / 1000.0);
+            (int)msgs.size(), msgs_size - (int)msgs.size(), queue_size_ms / 1000.0);
     } else {
         srs_trace("shrink the cache queue, size=%d, removed=%d, max=%.2f", 
-            (int)msgs.size(), iframe_index, queue_size_ms / 1000.0);
+            (int)msgs.size(), msgs_size - (int)msgs.size(), queue_size_ms / 1000.0);
     }
-    
-    // remove the first gop from the front
-    for (int i = 0; i < iframe_index; i++) {
-        SrsSharedPtrMessage* msg = msgs.at(i);
-        srs_freep(msg);
-    }
-    msgs.erase(msgs.begin(), msgs.begin() + iframe_index);
 }
 
 void SrsMessageQueue::clear()
@@ -759,6 +757,46 @@ SrsSource* SrsSource::fetch(SrsRequest* r)
     return source;
 }
 
+SrsSource* SrsSource::fetch(std::string vhost, std::string app, std::string stream)
+{
+    SrsSource* source = NULL;
+	string stream_url = srs_generate_stream_url(vhost, app, stream);
+    
+    if (pool.find(stream_url) == pool.end()) {
+        return NULL;
+    }
+
+    source = pool[stream_url];
+
+    return source;
+}
+
+void SrsSource::dispose_all()
+{
+    std::map<std::string, SrsSource*>::iterator it;
+    for (it = pool.begin(); it != pool.end(); ++it) {
+        SrsSource* source = it->second;
+        source->dispose();
+    }
+    return;
+}
+
+int SrsSource::cycle_all()
+{
+    int ret = ERROR_SUCCESS;
+    
+    // TODO: FIXME: support remove dead source for a long time.
+    std::map<std::string, SrsSource*>::iterator it;
+    for (it = pool.begin(); it != pool.end(); ++it) {
+        SrsSource* source = it->second;
+        if ((ret = source->cycle()) != ERROR_SUCCESS) {
+            return ret;
+        }
+    }
+    
+    return ret;
+}
+
 void SrsSource::destroy()
 {
     std::map<std::string, SrsSource*>::iterator it;
@@ -895,6 +933,26 @@ SrsSource::~SrsSource()
 #endif
 
     srs_freep(_req);
+}
+
+void SrsSource::dispose()
+{
+#ifdef SRS_AUTO_HLS
+    hls->dispose();
+#endif
+}
+
+int SrsSource::cycle()
+{
+    int ret = ERROR_SUCCESS;
+    
+#ifdef SRS_AUTO_HLS
+    if ((ret = hls->cycle()) != ERROR_SUCCESS) {
+        return ret;
+    }
+#endif
+    
+    return ret;
 }
 
 int SrsSource::initialize(SrsRequest* r, ISrsSourceHandler* h, ISrsHlsHandler* hh)
@@ -1422,7 +1480,7 @@ int SrsSource::on_audio_imp(SrsSharedPtrMessage* msg)
 #ifdef SRS_AUTO_HLS
     if ((ret = hls->on_audio(msg)) != ERROR_SUCCESS) {
         // apply the error strategy for hls.
-        // @see https://github.com/winlinvip/simple-rtmp-server/issues/264
+        // @see https://github.com/simple-rtmp-server/srs/issues/264
         std::string hls_error_strategy = _srs_config->get_hls_on_error(_req->vhost);
         if (hls_error_strategy == SRS_CONF_DEFAULT_HLS_ON_ERROR_IGNORE) {
             srs_warn("hls process audio message failed, ignore and disable hls. ret=%d", ret);
@@ -1586,7 +1644,7 @@ int SrsSource::on_video_imp(SrsSharedPtrMessage* msg)
 #ifdef SRS_AUTO_HLS
     if ((ret = hls->on_video(msg)) != ERROR_SUCCESS) {
         // apply the error strategy for hls.
-        // @see https://github.com/winlinvip/simple-rtmp-server/issues/264
+        // @see https://github.com/simple-rtmp-server/srs/issues/264
         std::string hls_error_strategy = _srs_config->get_hls_on_error(_req->vhost);
         if (hls_error_strategy == SRS_CONF_DEFAULT_HLS_ON_ERROR_IGNORE) {
             srs_warn("hls process video message failed, ignore and disable hls. ret=%d", ret);
@@ -1917,7 +1975,8 @@ int SrsSource::on_publish()
         srs_error("handle on publish failed. ret=%d", ret);
         return ret;
     }
-
+    SrsStatistic* stat = SrsStatistic::instance();
+    stat->on_stream_publish(_req);
     return ret;
 }
 
@@ -1958,6 +2017,8 @@ void SrsSource::on_unpublish()
 
     // notify the handler.
     srs_assert(handler);
+    SrsStatistic* stat = SrsStatistic::instance();
+    stat->on_stream_close(_req);
     handler->on_unpublish(this, _req);
 }
 
@@ -1997,7 +2058,7 @@ int SrsSource::create_consumer(SrsConsumer*& consumer, bool ds, bool dm, bool dg
     
     // copy sequence header
     // copy audio sequence first, for hls to fast parse the "right" audio codec.
-    // @see https://github.com/winlinvip/simple-rtmp-server/issues/301
+    // @see https://github.com/simple-rtmp-server/srs/issues/301
     if (ds && cache_sh_audio && (ret = consumer->enqueue(cache_sh_audio, atc, tba, tbv, ag)) != ERROR_SUCCESS) {
         srs_error("dispatch audio sequence header failed. ret=%d", ret);
         return ret;
