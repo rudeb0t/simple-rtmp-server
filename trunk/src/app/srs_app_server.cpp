@@ -47,6 +47,7 @@ using namespace std;
 #include <srs_app_rtsp.hpp>
 #include <srs_app_statistic.hpp>
 #include <srs_app_caster_flv.hpp>
+#include <srs_core_mem_watch.hpp>
 
 // signal defines.
 #define SIGNAL_RELOAD SIGHUP
@@ -373,8 +374,6 @@ SrsSignalManager::SrsSignalManager(SrsServer* server)
 
 SrsSignalManager::~SrsSignalManager()
 {
-    srs_freep(pthread);
-    
     srs_close_stfd(signal_read_stfd);
     
     if (sig_pipe[0] > 0) {
@@ -383,24 +382,13 @@ SrsSignalManager::~SrsSignalManager()
     if (sig_pipe[1] > 0) {
         ::close(sig_pipe[1]);
     }
+    
+    srs_freep(pthread);
 }
 
 int SrsSignalManager::initialize()
 {
     int ret = ERROR_SUCCESS;
-    return ret;
-}
-
-int SrsSignalManager::start()
-{
-    int ret = ERROR_SUCCESS;
-    
-    /**
-    * Note that if multiple processes are used (see below), 
-    * the signal pipe should be initialized after the fork(2) call 
-    * so that each process has its own private pipe.
-    */
-    struct sigaction sa;
     
     /* Create signal pipe */
     if (pipe(sig_pipe) < 0) {
@@ -408,6 +396,24 @@ int SrsSignalManager::start()
         srs_error("create signal manager pipe failed. ret=%d", ret);
         return ret;
     }
+    
+    if ((signal_read_stfd = st_netfd_open(sig_pipe[0])) == NULL) {
+        ret = ERROR_SYSTEM_CREATE_PIPE;
+        srs_error("create signal manage st pipe failed. ret=%d", ret);
+        return ret;
+    }
+    
+    return ret;
+}
+
+int SrsSignalManager::start()
+{
+    /**
+    * Note that if multiple processes are used (see below), 
+    * the signal pipe should be initialized after the fork(2) call 
+    * so that each process has its own private pipe.
+    */
+    struct sigaction sa;
     
     /* Install sig_catcher() as a signal handler */
     sa.sa_handler = SrsSignalManager::sig_catcher;
@@ -438,10 +444,6 @@ int SrsSignalManager::start()
 int SrsSignalManager::cycle()
 {
     int ret = ERROR_SUCCESS;
-    
-    if (signal_read_stfd == NULL) {
-        signal_read_stfd = st_netfd_open(sig_pipe[0]);
-    }
 
     int signo;
     
@@ -513,15 +515,7 @@ void SrsServer::destroy()
 {
     srs_warn("start destroy server");
     
-    _srs_config->unsubscribe(this);
-    
-    close_listeners(SrsListenerRtmpStream);
-    close_listeners(SrsListenerHttpApi);
-    close_listeners(SrsListenerHttpStream);
-
-#ifdef SRS_AUTO_INGEST
-    ingester->dispose();
-#endif
+    dispose();
     
 #ifdef SRS_AUTO_HTTP_API
     srs_freep(http_api_mux);
@@ -545,30 +539,39 @@ void SrsServer::destroy()
     }
     
     srs_freep(signal_manager);
-    
-    srs_freep(handler);
-    
-    // @remark never destroy the connections, 
-    // for it's still alive.
-
-    // @remark never destroy the source, 
-    // when we free all sources, the fmle publish may retry
-    // and segment fault.
 }
 
 void SrsServer::dispose()
 {
     _srs_config->unsubscribe(this);
     
+    // prevent fresh clients.
+    close_listeners(SrsListenerRtmpStream);
+    close_listeners(SrsListenerHttpApi);
+    close_listeners(SrsListenerHttpStream);
+    close_listeners(SrsListenerMpegTsOverUdp);
+    close_listeners(SrsListenerRtsp);
+    close_listeners(SrsListenerFlv);
+    
 #ifdef SRS_AUTO_INGEST
     ingester->dispose();
-    srs_trace("gracefully dispose ingesters");
 #endif
     
     SrsSource::dispose_all();
-    srs_trace("gracefully dispose sources");
     
-    srs_trace("terminate server");
+    while (!conns.empty()) {
+        std::vector<SrsConnection*>::iterator it;
+        for (it = conns.begin(); it != conns.end(); ++it) {
+            SrsConnection* conn = *it;
+            conn->dispose();
+        }
+        
+        st_usleep(100 * 1000);
+    }
+    
+#ifdef SRS_MEM_WATCH
+    srs_memory_report();
+#endif
 }
 
 int SrsServer::initialize(ISrsServerCycle* cycle_handler)
@@ -848,6 +851,7 @@ int SrsServer::cycle()
 #else
     srs_warn("main cycle terminated, system quit normally.");
     dispose();
+    srs_trace("srs terminated");
     exit(0);
 #endif
     
@@ -889,6 +893,9 @@ void SrsServer::on_signal(int signo)
         signal_gmc_stop = true;
 #else
         srs_trace("user terminate program");
+#ifdef SRS_MEM_WATCH
+        srs_memory_report();
+#endif
         exit(0);
 #endif
         return;
@@ -1404,6 +1411,20 @@ int SrsServer::on_update_ts(SrsRequest* r, string uri, string ts)
     
 #ifdef SRS_AUTO_HTTP_SERVER
     if ((ret = http_stream_mux->hls_update_ts(r, uri, ts)) != ERROR_SUCCESS) {
+        return ret;
+    }
+#endif
+    
+    return ret;
+}
+
+
+int SrsServer::on_remove_ts(SrsRequest* r, string uri)
+{
+    int ret = ERROR_SUCCESS;
+    
+#ifdef SRS_AUTO_HTTP_SERVER
+    if ((ret = http_stream_mux->hls_remove_ts(r, uri)) != ERROR_SUCCESS) {
         return ret;
     }
 #endif

@@ -197,9 +197,27 @@ private:
 };
 
 /**
+ * the wakable used for some object
+ * which is waiting on cond.
+ */
+class ISrsWakable
+{
+public:
+    ISrsWakable();
+    virtual ~ISrsWakable();
+public:
+    /**
+     * when the consumer(for player) got msg from recv thread,
+     * it must be processed for maybe it's a close msg, so the cond
+     * wait must be wakeup.
+     */
+    virtual void wakeup() = 0;
+};
+
+/**
 * the consumer for SrsSource, that is a play client.
 */
-class SrsConsumer
+class SrsConsumer : public ISrsWakable
 {
 private:
     SrsRtmpJitter* jitter;
@@ -257,17 +275,19 @@ public:
     * @param duration the messgae duration to wait.
     */
     virtual void wait(int nb_msgs, int duration);
-    /**
-    * when the consumer(for player) got msg from recv thread,
-    * it must be processed for maybe it's a close msg, so the cond
-    * wait must be wakeup.
-    */
-    virtual void wakeup();
 #endif
     /**
     * when client send the pause message.
     */
     virtual int on_play_client_pause(bool is_pause);
+// ISrsWakable
+public:
+    /**
+     * when the consumer(for player) got msg from recv thread,
+     * it must be processed for maybe it's a close msg, so the cond
+     * wait must be wakeup.
+     */
+    virtual void wakeup();
 };
 
 /**
@@ -309,6 +329,10 @@ public:
     SrsGopCache();
     virtual ~SrsGopCache();
 public:
+    /**
+     * cleanup when system quit.
+     */
+    virtual void dispose();
     /**
     * to enable or disable the gop cache.
     */
@@ -375,6 +399,7 @@ class SrsMixQueue
 {
 private:
     u_int32_t nb_videos;
+    u_int32_t nb_audios;
     std::multimap<int64_t, SrsSharedPtrMessage*> msgs;
 public:
     SrsMixQueue();
@@ -436,6 +461,9 @@ private:
     // whether use interlaced/mixed algorithm to correct timestamp.
     bool mix_correct;
     SrsMixQueue* mix_queue;
+    // whether stream is monotonically increase.
+    bool is_monotonically_increase;
+    int64_t last_packet_time;
     // hls handler.
 #ifdef SRS_AUTO_HLS
     SrsHls* hls;
@@ -536,8 +564,6 @@ public:
     virtual int on_video(SrsCommonMessage* video);
 private:
     virtual int on_video_imp(SrsSharedPtrMessage* video);
-private:
-    virtual int do_mix_correct(SrsSharedPtrMessage* msg);
 public:
     virtual int on_aggregate(SrsCommonMessage* msg);
     /**

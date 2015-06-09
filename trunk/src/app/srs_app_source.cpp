@@ -54,6 +54,9 @@ using namespace std;
 // 115 packets is 3s.
 #define SRS_PURE_AUDIO_GUESS_COUNT 115
 
+// when got these videos or audios, mix ok.
+#define SRS_MIX_CORRECT_MIX_AV 10
+
 int _srs_time_jitter_string2int(std::string time_jitter)
 {
     if (time_jitter == "full") {
@@ -420,6 +423,14 @@ void SrsMessageQueue::clear()
     av_start_time = av_end_time = -1;
 }
 
+ISrsWakable::ISrsWakable()
+{
+}
+
+ISrsWakable::~ISrsWakable()
+{
+}
+
 SrsConsumer::SrsConsumer(SrsSource* _source)
 {
     source = _source;
@@ -548,14 +559,6 @@ void SrsConsumer::wait(int nb_msgs, int duration)
     // use cond block wait for high performance mode.
     st_cond_wait(mw_wait);
 }
-
-void SrsConsumer::wakeup()
-{
-    if (mw_waiting) {
-        st_cond_signal(mw_wait);
-        mw_waiting = false;
-    }
-}
 #endif
 
 int SrsConsumer::on_play_client_pause(bool is_pause)
@@ -568,6 +571,16 @@ int SrsConsumer::on_play_client_pause(bool is_pause)
     return ret;
 }
 
+void SrsConsumer::wakeup()
+{
+#ifdef SRS_PERF_QUEUE_COND_WAIT
+    if (mw_waiting) {
+        st_cond_signal(mw_wait);
+        mw_waiting = false;
+    }
+#endif
+}
+
 SrsGopCache::SrsGopCache()
 {
     cached_video_count = 0;
@@ -576,6 +589,11 @@ SrsGopCache::SrsGopCache()
 }
 
 SrsGopCache::~SrsGopCache()
+{
+    clear();
+}
+
+void SrsGopCache::dispose()
 {
     clear();
 }
@@ -604,15 +622,15 @@ int SrsGopCache::cache(SrsSharedPtrMessage* shared_msg)
 
     // the gop cache know when to gop it.
     SrsSharedPtrMessage* msg = shared_msg;
-
-    // disable gop cache when not h.264
-    if (!SrsFlvCodec::video_is_h264(msg->payload, msg->size)) {
-        srs_info("gop donot cache video for none h.264");
-        return ret;
-    }
     
     // got video, update the video count if acceptable
     if (msg->is_video()) {
+        // drop video when not h.264
+        if (!SrsFlvCodec::video_is_h264(msg->payload, msg->size)) {
+            srs_info("gop cache drop video for none h.264");
+            return ret;
+        }
+        
         cached_video_count++;
         audio_after_last_video_count = 0;
     }
@@ -810,6 +828,7 @@ void SrsSource::destroy()
 SrsMixQueue::SrsMixQueue()
 {
     nb_videos = 0;
+    nb_audios = 0;
 }
 
 SrsMixQueue::~SrsMixQueue()
@@ -827,6 +846,7 @@ void SrsMixQueue::clear()
     msgs.clear();
     
     nb_videos = 0;
+    nb_audios = 0;
 }
 
 void SrsMixQueue::push(SrsSharedPtrMessage* msg)
@@ -835,14 +855,19 @@ void SrsMixQueue::push(SrsSharedPtrMessage* msg)
     
     if (msg->is_video()) {
         nb_videos++;
+    } else {
+        nb_audios++;
     }
 }
 
 SrsSharedPtrMessage* SrsMixQueue::pop()
 {
-    // always keep 2+ videos
-    if (nb_videos < 2) {
-        return NULL;
+    // when got 10+ videos or audios, mix ok.
+    // when got 1 video and 1 audio, mix ok.
+    if (nb_videos < SRS_MIX_CORRECT_MIX_AV && nb_audios < SRS_MIX_CORRECT_MIX_AV) {
+        if (nb_videos < 1 || nb_audios < 1) {
+            return NULL;
+        }
     }
     
     // pop the first msg.
@@ -852,6 +877,8 @@ SrsSharedPtrMessage* SrsMixQueue::pop()
     
     if (msg->is_video()) {
         nb_videos--;
+    } else {
+        nb_audios--;
     }
     
     return msg;
@@ -887,6 +914,9 @@ SrsSource::SrsSource()
     publish_edge = new SrsPublishEdge();
     gop_cache = new SrsGopCache();
     aggregate_stream = new SrsStream();
+    
+    is_monotonically_increase = false;
+    last_packet_time = 0;
     
     _srs_config->subscribe(this);
     atc = false;
@@ -940,6 +970,14 @@ void SrsSource::dispose()
 #ifdef SRS_AUTO_HLS
     hls->dispose();
 #endif
+    
+    // cleaup the cached packets.
+    srs_freep(cache_metadata);
+    srs_freep(cache_sh_video);
+    srs_freep(cache_sh_audio);
+    
+    // cleanup the gop cache.
+    gop_cache->dispose();
 }
 
 int SrsSource::cycle()
@@ -1455,6 +1493,15 @@ int SrsSource::on_audio(SrsCommonMessage* shared_audio)
 {
     int ret = ERROR_SUCCESS;
     
+    // monotically increase detect.
+    if (!mix_correct && is_monotonically_increase) {
+        if (last_packet_time > 0 && shared_audio->header.timestamp < last_packet_time) {
+            is_monotonically_increase = false;
+            srs_warn("stream not monotonically increase, please open mix_correct.");
+        }
+    }
+    last_packet_time = shared_audio->header.timestamp;
+    
     // convert shared_audio to msg, user should not use shared_audio again.
     // the payload is transfer to msg, and set to NULL in shared_audio.
     SrsSharedPtrMessage msg;
@@ -1464,11 +1511,29 @@ int SrsSource::on_audio(SrsCommonMessage* shared_audio)
     }
     srs_info("Audio dts=%"PRId64", size=%d", msg.timestamp, msg.size);
     
+    // directly process the audio message.
     if (!mix_correct) {
         return on_audio_imp(&msg);
     }
     
-    return do_mix_correct(&msg);
+    // insert msg to the queue.
+    mix_queue->push(msg.copy());
+    
+    // fetch someone from mix queue.
+    SrsSharedPtrMessage* m = mix_queue->pop();
+    if (!m) {
+        return ret;
+    }
+    
+    // consume the monotonically increase message.
+    if (m->is_audio()) {
+        ret = on_audio_imp(m);
+    } else {
+        ret = on_video_imp(m);
+    }
+    srs_freep(m);
+    
+    return ret;
 }
 
 int SrsSource::on_audio_imp(SrsSharedPtrMessage* msg)
@@ -1619,6 +1684,27 @@ int SrsSource::on_video(SrsCommonMessage* shared_video)
 {
     int ret = ERROR_SUCCESS;
     
+    // monotically increase detect.
+    if (!mix_correct && is_monotonically_increase) {
+        if (last_packet_time > 0 && shared_video->header.timestamp < last_packet_time) {
+            is_monotonically_increase = false;
+            srs_warn("stream not monotonically increase, please open mix_correct.");
+        }
+    }
+    last_packet_time = shared_video->header.timestamp;
+    
+    // drop any unknown header video.
+    // @see https://github.com/simple-rtmp-server/srs/issues/421
+    if (!SrsFlvCodec::video_is_acceptable(shared_video->payload, shared_video->size)) {
+        char b0 = 0x00;
+        if (shared_video->size > 0) {
+            b0 = shared_video->payload[0];
+        }
+        
+        srs_warn("drop unknown header video, size=%d, bytes[0]=%#x", shared_video->size, b0);
+        return ret;
+    }
+    
     // convert shared_video to msg, user should not use shared_video again.
     // the payload is transfer to msg, and set to NULL in shared_video.
     SrsSharedPtrMessage msg;
@@ -1628,11 +1714,30 @@ int SrsSource::on_video(SrsCommonMessage* shared_video)
     }
     srs_info("Video dts=%"PRId64", size=%d", msg.timestamp, msg.size);
     
+    // directly process the audio message.
     if (!mix_correct) {
         return on_video_imp(&msg);
     }
     
-    return do_mix_correct(&msg);
+    // insert msg to the queue.
+    mix_queue->push(msg.copy());
+    
+    // fetch someone from mix queue.
+    SrsSharedPtrMessage* m = mix_queue->pop();
+    if (!m) {
+        return ret;
+    }
+    SrsAutoFree(SrsSharedPtrMessage, m);
+    
+    // consume the monotonically increase message.
+    if (m->is_audio()) {
+        ret = on_audio_imp(m);
+    } else {
+        ret = on_video_imp(m);
+    }
+    srs_freep(m);
+    
+    return ret;
 }
 
 int SrsSource::on_video_imp(SrsSharedPtrMessage* msg)
@@ -1764,29 +1869,6 @@ int SrsSource::on_video_imp(SrsSharedPtrMessage* msg)
     }
     
     return ret;
-}
-
-int SrsSource::do_mix_correct(SrsSharedPtrMessage* msg)
-{
-    int ret = ERROR_SUCCESS;
-    
-    // insert msg to the queue.
-    mix_queue->push(msg->copy());
-    
-    // fetch someone from mix queue.
-    SrsSharedPtrMessage* m = mix_queue->pop();
-    if (!m) {
-        return ret;
-    }
-    SrsAutoFree(SrsSharedPtrMessage, m);
-    
-    // consume the monotonically increase message.
-    if (m->is_audio()) {
-        return on_audio_imp(m);
-    }
-    
-    srs_assert(m->is_video());
-    return on_video_imp(m);
 }
 
 int SrsSource::on_aggregate(SrsCommonMessage* msg)
@@ -1931,6 +2013,10 @@ int SrsSource::on_publish()
     
     // reset the mix queue.
     mix_queue->clear();
+    
+    // detect the monotonically again.
+    is_monotonically_increase = true;
+    last_packet_time = 0;
     
     // create forwarders
     if ((ret = create_forwarders()) != ERROR_SUCCESS) {

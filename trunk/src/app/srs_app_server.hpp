@@ -293,10 +293,14 @@ private:
     virtual void dispose();
 // server startup workflow, @see run_master()
 public:
+    /**
+     * initialize server with callback handler.
+     * @remark user must free the cycle handler.
+     */
     virtual int initialize(ISrsServerCycle* cycle_handler);
+    virtual int initialize_st();
     virtual int initialize_signal();
     virtual int acquire_pid_file();
-    virtual int initialize_st();
     virtual int listen();
     virtual int register_signal();
     virtual int http_handle();
@@ -375,6 +379,7 @@ public:
     virtual int on_hls_publish(SrsRequest* r);
     virtual int on_update_m3u8(SrsRequest* r, std::string m3u8);
     virtual int on_update_ts(SrsRequest* r, std::string uri, std::string ts);
+    virtual int on_remove_ts(SrsRequest* r, std::string uri);
     virtual int on_hls_unpublish(SrsRequest* r);
 };
 

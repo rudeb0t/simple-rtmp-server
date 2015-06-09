@@ -364,6 +364,7 @@ int SrsProtocol::recv_message(SrsCommonMessage** pmsg)
         srs_verbose("entire msg received");
         
         if (!msg) {
+            srs_info("got empty message without error.");
             continue;
         }
         
@@ -467,7 +468,7 @@ int SrsProtocol::do_send_messages(SrsSharedPtrMessage** msgs, int nb_msgs)
             iovs[0].iov_len = nbh;
             
             // payload iov
-            int payload_size = srs_min(out_chunk_size, pend - p);
+            int payload_size = srs_min(out_chunk_size, (int)(pend - p));
             iovs[1].iov_base = p;
             iovs[1].iov_len = payload_size;
             
@@ -1409,8 +1410,7 @@ int SrsProtocol::read_message_payload(SrsChunkStream* chunk, SrsCommonMessage** 
 
     // create msg payload if not initialized
     if (!chunk->msg->payload) {
-        chunk->msg->payload = new char[chunk->header.payload_length];
-        srs_verbose("create payload for RTMP message. size=%d", chunk->header.payload_length);
+        chunk->msg->create_payload(chunk->header.payload_length);
     }
     
     // read payload to buffer

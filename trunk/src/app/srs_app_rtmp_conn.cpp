@@ -88,6 +88,7 @@ SrsRtmpConn::SrsRtmpConn(SrsServer* svr, st_netfd_t c)
     duration = 0;
     kbps = new SrsKbps();
     kbps->set_io(skt, skt);
+    wakable = NULL;
     
     mw_sleep = SRS_PERF_MW_SLEEP;
     mw_enabled = false;
@@ -108,6 +109,16 @@ SrsRtmpConn::~SrsRtmpConn()
     srs_freep(bandwidth);
     srs_freep(security);
     srs_freep(kbps);
+}
+
+void SrsRtmpConn::dispose()
+{
+    SrsConnection::dispose();
+    
+    // wakeup the handler which need to notice.
+    if (wakable) {
+        wakable->wakeup();
+    }
 }
 
 // TODO: return detail message when error for client.
@@ -320,11 +331,14 @@ int SrsRtmpConn::service_cycle()
     }
     srs_verbose("on_bw_done success");
     
-    while (true) {
+    while (!disposed) {
         ret = stream_service_cycle();
         
         // stream service must terminated with error, never success.
-        srs_assert(ret != ERROR_SUCCESS);
+        // when terminated with success, it's user required to stop.
+        if (ret == ERROR_SUCCESS) {
+            continue;
+        }
         
         // when not system control error, fatal error, return.
         if (!srs_is_system_control_error(ret)) {
@@ -361,6 +375,8 @@ int SrsRtmpConn::service_cycle()
         srs_error("control message(%d) reject as error. ret=%d", ret, ret);
         return ret;
     }
+    
+    return ret;
 }
 
 int SrsRtmpConn::stream_service_cycle()
@@ -592,7 +608,9 @@ int SrsRtmpConn::playing(SrsSource* source)
     }
     
     // delivery messages for clients playing stream.
+    wakable = consumer;
     ret = do_playing(source, consumer, &trd);
+    wakable = NULL;
     
     // stop isolate recv thread
     trd.stop();
@@ -635,7 +653,7 @@ int SrsRtmpConn::do_playing(SrsSource* source, SrsConsumer* consumer, SrsQueueRe
     // set the sock options.
     play_set_sock_options();
     
-    while (true) {
+    while (!disposed) {
         // collect elapse for pithy print.
         pprint->elapse();
 
@@ -865,11 +883,11 @@ int SrsRtmpConn::do_publishing(SrsSource* source, SrsPublishRecvThread* trd)
     }
 
     int64_t nb_msgs = 0;
-    while (true) {
+    while (!disposed) {
         pprint->elapse();
 
         // cond wait for error.
-        trd->wait(SRS_CONSTS_RTMP_RECV_TIMEOUT_US / 1000);
+        trd->wait(SRS_CONSTS_RTMP_PUBLISHER_RECV_TIMEOUT_US / 1000);
 
         // check the thread error code.
         if ((ret = trd->error_code()) != ERROR_SUCCESS) {
@@ -916,7 +934,6 @@ int SrsRtmpConn::handle_publish_message(SrsSource* source, SrsCommonMessage* msg
             srs_error("fmle decode unpublish message failed. ret=%d", ret);
             return ret;
         }
-
         SrsAutoFree(SrsPacket, pkt);
 
         // for flash, any packet is republish.

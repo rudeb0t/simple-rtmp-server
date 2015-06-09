@@ -211,6 +211,11 @@ void check_macro_features()
     #warning "current branch is not stable, please use stable branch instead."
     srs_warn("SRS %s is not stable, please use stable branch %s instead", RTMP_SIG_SRS_VERSION, VERSION_STABLE_BRANCH);
 #endif
+    
+#ifdef SRS_MEM_WATCH
+    #warning "srs memory watcher will hurts performance. user should kill by SIGTERM or init.d script."
+    srs_warn("srs memory watcher will hurts performance. user should kill by SIGTERM or init.d script.");
+#endif
 
 #if defined(SRS_AUTO_STREAM_CASTER)
     #warning "stream caster is experiment feature."
@@ -247,6 +252,11 @@ int main(int argc, char** argv)
         "@see: http://google-perftools.googlecode.com/svn/trunk/doc/heap_checker.html\n"
         "Note that since the heap-checker uses the heap-profiling framework internally, "
         "it is not possible to run both the heap-checker and heap profiler at the same time");
+#endif
+    
+    // never use gmp to check memory leak.
+#ifdef SRS_AUTO_GPERF_MP
+    #warning "gmp is not used for memory leak, please use gmc instead."
 #endif
     
     // never use srs log(srs_trace, srs_error, etc) before config parse the option,
