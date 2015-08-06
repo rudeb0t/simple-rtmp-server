@@ -31,11 +31,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 using namespace std;
 
 #include <srs_kernel_error.hpp>
-#include <srs_rtmp_sdk.hpp>
+#include <srs_rtmp_stack.hpp>
 #include <srs_rtmp_io.hpp>
 #include <srs_app_config.hpp>
 #include <srs_rtmp_utility.hpp>
-#include <srs_app_st_socket.hpp>
+#include <srs_app_st.hpp>
 #include <srs_app_source.hpp>
 #include <srs_app_pithy_print.hpp>
 #include <srs_core_autofree.hpp>
@@ -94,6 +94,13 @@ int SrsEdgeIngester::initialize(SrsSource* source, SrsPlayEdge* edge, SrsRequest
 
 int SrsEdgeIngester::start()
 {
+    int ret = ERROR_SUCCESS;
+
+    if ((ret = _source->on_publish()) != ERROR_SUCCESS) {
+        srs_error("edge pull stream then publish to edge failed. ret=%d", ret);
+        return ret;
+    }
+
     return pthread->start();
 }
 
@@ -114,7 +121,9 @@ void SrsEdgeIngester::stop()
 int SrsEdgeIngester::cycle()
 {
     int ret = ERROR_SUCCESS;
-    
+
+    _source->on_source_id_changed(_srs_context->get_id());
+        
     std::string ep_server, ep_port;
     if ((ret = connect_server(ep_server, ep_port)) != ERROR_SUCCESS) {
         return ret;
@@ -141,11 +150,6 @@ int SrsEdgeIngester::cycle()
     if ((ret = client->play(req->stream, stream_id)) != ERROR_SUCCESS) {
         srs_error("connect with server failed, stream=%s, stream_id=%d. ret=%d", 
             req->stream.c_str(), stream_id, ret);
-        return ret;
-    }
-    
-    if ((ret = _source->on_publish()) != ERROR_SUCCESS) {
-        srs_error("edge pull stream then publish to edge failed. ret=%d", ret);
         return ret;
     }
     
@@ -381,8 +385,8 @@ int SrsEdgeIngester::connect_server(string& ep_server, string& ep_port)
     
     kbps->set_io(io, io);
     
-    srs_trace("edge pull connected, can_publish=%d, url=%s/%s, server=%s:%d",
-        _source->can_publish(), _req->tcUrl.c_str(), _req->stream.c_str(), server.c_str(), port);
+    srs_trace("edge pull connected, url=%s/%s, server=%s:%d",
+        _req->tcUrl.c_str(), _req->stream.c_str(), server.c_str(), port);
     
     return ret;
 }
@@ -701,7 +705,6 @@ int SrsEdgeForwarder::connect_app(string ep_server, string ep_port)
 SrsPlayEdge::SrsPlayEdge()
 {
     state = SrsEdgeStateInit;
-    user_state = SrsEdgeUserStateInit;
     ingester = new SrsEdgeIngester();
 }
 
@@ -724,14 +727,6 @@ int SrsPlayEdge::initialize(SrsSource* source, SrsRequest* req)
 int SrsPlayEdge::on_client_play()
 {
     int ret = ERROR_SUCCESS;
-    
-    // error state.
-    if (user_state != SrsEdgeUserStateInit) {
-        ret = ERROR_RTMP_EDGE_PLAY_STATE;
-        srs_error("invalid state for client to pull stream on edge. "
-            "state=%d, user_state=%d, ret=%d", state, user_state, ret);
-        return ret;
-    }
     
     // start ingest when init state.
     if (state == SrsEdgeStateInit) {
@@ -778,7 +773,6 @@ int SrsPlayEdge::on_ingest_play()
 SrsPublishEdge::SrsPublishEdge()
 {
     state = SrsEdgeStateInit;
-    user_state = SrsEdgeUserStateInit;
     forwarder = new SrsEdgeForwarder();
 }
 
@@ -803,23 +797,20 @@ int SrsPublishEdge::initialize(SrsSource* source, SrsRequest* req)
     return ret;
 }
 
+bool SrsPublishEdge::can_publish()
+{
+    return state != SrsEdgeStatePublish;
+}
+
 int SrsPublishEdge::on_client_publish()
 {
     int ret = ERROR_SUCCESS;
-    
-    // error state.
-    if (user_state != SrsEdgeUserStateInit) {
-        ret = ERROR_RTMP_EDGE_PUBLISH_STATE;
-        srs_error("invalid state for client to publish stream on edge. "
-            "state=%d, user_state=%d, ret=%d", state, user_state, ret);
-        return ret;
-    }
     
     // error when not init state.
     if (state != SrsEdgeStateInit) {
         ret = ERROR_RTMP_EDGE_PUBLISH_STATE;
         srs_error("invalid state for client to publish stream on edge. "
-            "state=%d, user_state=%d, ret=%d", state, user_state, ret);
+            "state=%d, ret=%d", state, ret);
         return ret;
     }
     

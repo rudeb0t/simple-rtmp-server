@@ -31,7 +31,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 using namespace std;
 
 #include <srs_app_config.hpp>
-#include <srs_rtmp_sdk.hpp>
+#include <srs_rtmp_stack.hpp>
 #include <srs_core_autofree.hpp>
 #include <srs_kernel_utility.hpp>
 #include <srs_app_http_hooks.hpp>
@@ -273,7 +273,7 @@ int SrsFlvSegment::write_audio(SrsSharedPtrMessage* shared_audio)
     SrsSharedPtrMessage* audio = shared_audio->copy();
     SrsAutoFree(SrsSharedPtrMessage, audio);
     
-    if ((jitter->correct(audio, 0, 0, jitter_algorithm)) != ERROR_SUCCESS) {
+    if ((jitter->correct(audio, jitter_algorithm)) != ERROR_SUCCESS) {
         return ret;
     }
     
@@ -324,7 +324,7 @@ int SrsFlvSegment::write_video(SrsSharedPtrMessage* shared_video)
         }
     }
     
-    if ((jitter->correct(video, 0, 0, jitter_algorithm)) != ERROR_SUCCESS) {
+    if ((jitter->correct(video, jitter_algorithm)) != ERROR_SUCCESS) {
         return ret;
     }
     
@@ -334,7 +334,7 @@ int SrsFlvSegment::write_video(SrsSharedPtrMessage* shared_video)
         return ret;
     }
     
-    int32_t timestamp = plan->filter_timestamp(video->timestamp);
+    int32_t timestamp = (int32_t)plan->filter_timestamp(video->timestamp);
     if ((ret = enc->write_video(timestamp, payload, size)) != ERROR_SUCCESS) {
         return ret;
     }
@@ -639,11 +639,11 @@ int SrsDvrPlan::on_reap_segment()
 SrsDvrPlan* SrsDvrPlan::create_plan(string vhost)
 {
     std::string plan = _srs_config->get_dvr_plan(vhost);
-    if (plan == SRS_CONF_DEFAULT_DVR_PLAN_SEGMENT) {
+    if (srs_config_dvr_is_plan_segment(plan)) {
         return new SrsDvrSegmentPlan();
-    } else if (plan == SRS_CONF_DEFAULT_DVR_PLAN_SESSION) {
+    } else if (srs_config_dvr_is_plan_session(plan)) {
         return new SrsDvrSessionPlan();
-    } else if (plan == SRS_CONF_DEFAULT_DVR_PLAN_APPEND) {
+    } else if (srs_config_dvr_is_plan_append(plan)) {
         return new SrsDvrAppendPlan();
     } else {
         srs_error("invalid dvr plan=%s, vhost=%s", plan.c_str(), vhost.c_str());

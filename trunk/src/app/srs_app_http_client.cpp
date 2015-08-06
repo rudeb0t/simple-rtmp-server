@@ -31,7 +31,7 @@ using namespace std;
 
 #include <srs_kernel_error.hpp>
 #include <srs_kernel_log.hpp>
-#include <srs_app_st_socket.hpp>
+#include <srs_app_st.hpp>
 #include <srs_kernel_utility.hpp>
 #include <srs_app_utility.hpp>
 #include <srs_core_autofree.hpp>
@@ -187,7 +187,7 @@ int SrsHttpClient::connect()
             host.c_str(), port, timeout_us, ret);
         return ret;
     }
-    srs_info("connect to server success. server=%s, port=%d", host, port);
+    srs_info("connect to server success. server=%s, port=%d", host.c_str(), port);
     
     srs_assert(!skt);
     skt = new SrsStSocket(stfd);

@@ -36,9 +36,9 @@ using namespace std;
 #include <srs_app_http_conn.hpp>
 #include <srs_core_autofree.hpp>
 #include <srs_kernel_flv.hpp>
-#include <srs_rtmp_sdk.hpp>
+#include <srs_rtmp_stack.hpp>
 #include <srs_rtmp_utility.hpp>
-#include <srs_app_st_socket.hpp>
+#include <srs_app_st.hpp>
 #include <srs_app_utility.hpp>
 #include <srs_rtmp_amf0.hpp>
 #include <srs_kernel_utility.hpp>

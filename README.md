@@ -1,13 +1,13 @@
 #Simple-RTMP-Server
 
-SRS/2.0，开发代号：[ZhouGuowen][release2]
+SRS/2.0, [ZhouGuowen][release2]
 
 SRS定位是运营级的互联网直播服务器集群，追求更好的概念完整性和最简单实现的代码。<br/>
 SRS is industrial-strength live streaming cluster, for the best conceptual integrity and the simplest implementation. 
 
 Download from github.io: [Centos6-x86_64][centos0], [more...][more0]<br/>
 Download from ossrs.net: [Centos6-x86_64][centos1], [more...][more1]<br/>
-Contact by QQ or Skype, read [Contact][contact]
+Website for SRS/2.0, read SRS 2.0 [Chinese][srs2_CN] or [English][srs2_EN].
 
 ## Why SRS?
 
@@ -95,7 +95,7 @@ git clone https://gitlab.com/winlinvip/srs-gitlab.git
 
 <pre>
 git clone https://github.com/simple-rtmp-server/srs &&
-cd simple-rtmp-server/trunk
+cd srs/trunk
 </pre>
 
 <strong>Step 2:</strong> build SRS,
@@ -119,9 +119,9 @@ cd simple-rtmp-server/trunk
 * Usage: How to delivery RTMP Cluster?([CN][v1_CN_SampleRTMPCluster], [EN][v1_EN_SampleRTMPCluster])
 * Usage: How to delivery HTTP FLV Live Streaming?([CN][v2_CN_SampleHttpFlv], [EN][v2_EN_SampleHttpFlv])
 * Usage: How to delivery HTTP FLV Live Streaming Cluster?([CN][v2_CN_SampleHttpFlvCluster], [EN][v2_EN_SampleHttpFlvCluster])
-* Usage: How to delivery HLS?([CN][v1_CN_SampleHLS], [EN][v1_EN_SampleHLS])
-* Usage: How to delivery HLS for other codec?([CN][v1_CN_SampleTranscode2HLS], [EN][v1_EN_SampleTranscode2HLS])
-* Usage: How to transode RTMP stream by SRS?([CN][v1_CN_SampleFFMPEG], [EN][v1_EN_SampleFFMPEG])
+* Usage: How to delivery HLS?([CN][v2_CN_SampleHLS], [EN][v2_EN_SampleHLS])
+* Usage: How to delivery HLS for other codec?([CN][v2_CN_SampleTranscode2HLS], [EN][v2_EN_SampleTranscode2HLS])
+* Usage: How to transode RTMP stream by SRS?([CN][v2_CN_SampleFFMPEG], [EN][v2_EN_SampleFFMPEG])
 * Usage: How to forward stream to other server?([CN][v1_CN_SampleForward], [EN][v1_EN_SampleForward])
 * Usage: How to deploy low lantency application?([CN][v2_CN_SampleRealtime], [EN][v2_EN_SampleRealtime])
 * Usage: How to deploy SRS on ARM?([CN][v1_CN_SampleARM], [EN][v1_EN_SampleARM])
@@ -342,8 +342,14 @@ Remark:
 
 ## History
 
-### SRS 2.0 history
-
+* v2.0, 2015-07-21, for [#169](https://github.com/simple-rtmp-server/srs/issues/169) support default values for transcode. 2.0.180
+* v2.0, 2015-07-21, fix [#435](https://github.com/simple-rtmp-server/srs/issues/435) add pageUrl for HTTP callback on_play.
+* v2.0, 2015-07-20, refine the hls, ignore packet when no sequence header. 2.0.179
+* v2.0, 2015-07-16, for [#441](https://github.com/simple-rtmp-server/srs/issues/441) use 30s timeout for first msg. 2.0.178
+* v2.0, 2015-07-14, refine hls disable the time jitter, support not mix monotonically increase. 2.0.177
+* v2.0, 2015-07-01, fix [#433](https://github.com/simple-rtmp-server/srs/issues/433) fix the sps parse bug. 2.0.176
+* v2.0, 2015-06-10, fix [#425](https://github.com/simple-rtmp-server/srs/issues/425) refine the time jitter, correct (-inf,-250)+(250,+inf) to 10ms. 2.0.175
+* v2.0, 2015-06-10, fix [#424](https://github.com/simple-rtmp-server/srs/issues/424) fix aggregate timestamp bug. 2.0.174
 * v2.0, 2015-06-06, fix [#421](https://github.com/simple-rtmp-server/srs/issues/421) drop video for unkown RTMP header.
 * v2.0, 2015-06-05, fix [#420](https://github.com/simple-rtmp-server/srs/issues/420) remove ts for hls ram mode.
 * v2.0, 2015-05-30, fix [#209](https://github.com/simple-rtmp-server/srs/issues/209) cleanup hls when stop and timeout. 2.0.173.
@@ -460,33 +466,6 @@ Remark:
 * v2.0, 2014-10-19, fix [#184](https://github.com/simple-rtmp-server/srs/issues/184), support AnnexB in RTMP body for HLS. 2.0.2
 * v2.0, 2014-10-18, remove supports for OSX(darwin). 2.0.1.
 * v2.0, 2014-10-16, revert github srs README to English. 2.0.0.
-
-### SRS 1.0 history
-
-* <strong>v1.0, 2015-05-23, [1.0r4 release(1.0.32)](https://github.com/simple-rtmp-server/srs/releases/tag/1.0r4) released. 59509 lines.</strong>
-* v1.0, 2015-05-22, fix [#397](https://github.com/simple-rtmp-server/srs/issues/397) the USER_HZ maybe not 100. 1.0.32
-* v1.0, 2015-03-26, fix hls aac adts bug, in aac mux. 1.0.31.
-* <strong>v1.0, 2015-03-19, [1.0r3 release(1.0.30)](https://github.com/simple-rtmp-server/srs/releases/tag/1.0r3) released. 59511 lines.</strong>
-* v1.0, 2015-03-17, remove the osx for 1.0.30.
-* v1.0, 2015-02-17, the join maybe failed, should use a variable to ensure thread terminated. 1.0.28.
-* <strong>v1.0, 2015-02-12, [1.0r2 release(1.0.27)](https://github.com/simple-rtmp-server/srs/releases/tag/1.0r2) released. 59507 lines.</strong>
-* v1.0, 2015-02-11, dev code HuKaiqun for 1.0.27.
-* v1.0, 2015-02-10, for [#310](https://github.com/simple-rtmp-server/srs/issues/310), the aac profile must be object plus one. 1.0.26
-* v1.0, 2015-01-25, hotfix [#268](https://github.com/simple-rtmp-server/srs/issues/268), refine the pcr start at 0, dts/pts plus delay. 1.0.25
-* v1.0, 2015-01-25, hotfix [#151](https://github.com/simple-rtmp-server/srs/issues/151), refine pcr=dts-800ms and use dts/pts directly. 1.0.24
-* v1.0, 2015-01-23, hotfix [#151](https://github.com/simple-rtmp-server/srs/issues/151), use absolutely overflow to make jwplayer happy. 1.0.23
-* v1.0, 2015-01-17, hotfix [#290](https://github.com/simple-rtmp-server/srs/issues/290), use iformat only for rtmp input. 1.0.22
-* <strong>v1.0, 2015-01-15, [1.0r1 release(1.0.21)](https://github.com/simple-rtmp-server/srs/releases/tag/1.0r1) released. 59472 lines.</strong>
-* v1.0, 2015-01-08, hotfix [#281](https://github.com/simple-rtmp-server/srs/issues/281), fix hls bug ignore type-9 send aud. 1.0.20
-* v1.0, 2015-01-03, hotfix to remove the pageUrl for http callback. 1.0.19
-* v1.0, 2015-01-02, hotfix [#207](https://github.com/simple-rtmp-server/srs/issues/207), trim the last 0 of log. 1.0.18
-* v1.0, 2015-01-02, hotfix [#216](https://github.com/simple-rtmp-server/srs/issues/216), http-callback post in application/json content-type. 1.0.17
-* v1.0, 2015-01-01, hotfix [#270](https://github.com/simple-rtmp-server/srs/issues/270), memory leak for http client post. 1.0.16
-* v1.0, 2014-12-29, hotfix [#267](https://github.com/simple-rtmp-server/srs/issues/267), the forward dest ep should use server. 1.0.15
-* v1.0, 2014-12-29, hotfix [#268](https://github.com/simple-rtmp-server/srs/issues/268), the hls pcr is negative when startup. 1.0.14
-* v1.0, 2014-12-22, hotfix [#264](https://github.com/simple-rtmp-server/srs/issues/264), ignore NALU when sequence header to make HLS happy. 1.0.12
-* v1.0, 2014-12-20, hotfix [#264](https://github.com/simple-rtmp-server/srs/issues/264), support disconnect publish connect when hls error. 1.0.11
-* <strong>v1.0, 2014-12-05, [1.0 release(1.0.10)](https://github.com/simple-rtmp-server/srs/releases/tag/1.0) released. 59391 lines.</strong>
 * <strong>v1.0, 2014-10-09, [1.0 beta(1.0.0)](https://github.com/simple-rtmp-server/srs/releases/tag/1.0.beta) released. 59316 lines.</strong>
 * v1.0, 2014-10-08, fix [#151](https://github.com/simple-rtmp-server/srs/issues/151), always reap ts whatever audio or video packet. 0.9.223.
 * v1.0, 2014-10-08, fix [#162](https://github.com/simple-rtmp-server/srs/issues/162), failed if no epoll. 0.9.222.
@@ -712,7 +691,7 @@ The publish RTMP benchmark by [SB](https://github.com/simple-rtmp-server/srs-ben
 |   2014-12-03  |   2.0.12  |   1.2k(1200)  |   publishers  |   96%     |   43MB    |   -           |
 |   2014-12-03  |   2.0.47  |   1.2k(1200)  |   publishers  |   84%     |   76MB    |   [code][p1]  |
 |   2014-12-03  |   2.0.47  |   1.4k(1400)  |   publishers  |   95%     |   140MB   |   -           |
-|   2014-12-03  |   2.0.48  |   1.4k(1400   |   publishers  |   95%     |   140MB   |   [code][p2]  |
+|   2014-12-03  |   2.0.48  |   1.4k(1400)  |   publishers  |   95%     |   140MB   |   [code][p2]  |
 |   2014-12-04  |   2.0.49  |   1.4k(1400)  |   publishers  |   68%     |   144MB   |   -           |
 |   2014-12-04  |   2.0.49  |   2.5k(2500)  |   publishers  |   95%     |   404MB   |   [code][p3]  |
 |   2014-12-04  |   2.0.51  |   2.5k(2500)  |   publishers  |   91%     |   259MB   |   [code][p4]  |
@@ -817,7 +796,7 @@ SRS always use the most simple architecture to support complex transaction.
 
 <pre>
                    +---------+              +----------+
-                   + Publish +              +  Deliver |
+                   | Publish |              |  Deliver |
                    +---|-----+              +----|-----+
 +----------------------+-------------------------+----------------+
 |     Input            | SRS(Simple RTMP Server) |     Output     |
@@ -832,13 +811,13 @@ SRS always use the most simple architecture to support complex transaction.
 +----------------------+                         |                |
 |  MediaSource(2)      |                         |                |
 |  (RTSP,FILE,         |                         |                |
-|   HTTP,HLS,   --pull-+->-- Ingester ----(rtmp)-+-> SRS          |
+|   HTTP,HLS,   --pull-+->-- Ingester(3) -(rtmp)-+-> SRS          |
 |   Device,            |                         |                |
 |   ......)            |                         |                |
 +----------------------+                         |                |
 |  MediaSource(2)      |                         |                |
 |  (RTSP,FILE,         |                         |                |
-|   HTTP,HLS,   --push-+->-- Streamer ----(rtmp)-+-> SRS          |
+|   HTTP,HLS,   --push-+->-- Streamer(4) -(rtmp)-+-> SRS          |
 |   Device,            |                         |                |
 |   ......)            |                         |                |
 +----------------------+-------------------------+----------------+
@@ -897,12 +876,12 @@ Winlin
 [v1_EN_SampleRTMP]: https://github.com/simple-rtmp-server/srs/wiki/v1_EN_SampleRTMP
 [v1_CN_SampleRTMPCluster]: https://github.com/simple-rtmp-server/srs/wiki/v1_CN_SampleRTMPCluster
 [v1_EN_SampleRTMPCluster]: https://github.com/simple-rtmp-server/srs/wiki/v1_EN_SampleRTMPCluster
-[v1_CN_SampleHLS]: https://github.com/simple-rtmp-server/srs/wiki/v1_CN_SampleHLS
-[v1_EN_SampleHLS]: https://github.com/simple-rtmp-server/srs/wiki/v1_EN_SampleHLS
-[v1_CN_SampleTranscode2HLS]: https://github.com/simple-rtmp-server/srs/wiki/v1_CN_SampleTranscode2HLS
-[v1_EN_SampleTranscode2HLS]: https://github.com/simple-rtmp-server/srs/wiki/v1_EN_SampleTranscode2HLS
-[v1_CN_SampleFFMPEG]: https://github.com/simple-rtmp-server/srs/wiki/v1_CN_SampleFFMPEG
-[v1_EN_SampleFFMPEG]: https://github.com/simple-rtmp-server/srs/wiki/v1_EN_SampleFFMPEG
+[v2_CN_SampleHLS]: https://github.com/simple-rtmp-server/srs/wiki/v2_CN_SampleHLS
+[v2_EN_SampleHLS]: https://github.com/simple-rtmp-server/srs/wiki/v2_EN_SampleHLS
+[v2_CN_SampleTranscode2HLS]: https://github.com/simple-rtmp-server/srs/wiki/v2_CN_SampleTranscode2HLS
+[v2_EN_SampleTranscode2HLS]: https://github.com/simple-rtmp-server/srs/wiki/v2_EN_SampleTranscode2HLS
+[v2_CN_SampleFFMPEG]: https://github.com/simple-rtmp-server/srs/wiki/v2_CN_SampleFFMPEG
+[v2_EN_SampleFFMPEG]: https://github.com/simple-rtmp-server/srs/wiki/v2_EN_SampleFFMPEG
 [v1_CN_SampleForward]: https://github.com/simple-rtmp-server/srs/wiki/v1_CN_SampleForward
 [v1_EN_SampleForward]: https://github.com/simple-rtmp-server/srs/wiki/v1_EN_SampleForward
 [v2_CN_SampleRealtime]: https://github.com/simple-rtmp-server/srs/wiki/v2_CN_SampleRealtime
@@ -1018,5 +997,6 @@ Winlin
 [centos0]: http://winlinvip.github.io/srs.release/releases/files/SRS-CentOS6-x86_64-1.0.32.zip
 [centos1]: http://www.ossrs.net/srs.release/releases/files/SRS-CentOS6-x86_64-1.0.32.zip
 
-
+[srs2_CN]: https://github.com/simple-rtmp-server/srs/wiki/v2_CN_Home
+[srs2_EN]: https://github.com/simple-rtmp-server/srs/wiki/v2_EN_Home
 

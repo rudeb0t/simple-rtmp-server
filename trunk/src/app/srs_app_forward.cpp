@@ -31,12 +31,12 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 using namespace std;
 
 #include <srs_app_source.hpp>
-#include <srs_app_st_socket.hpp>
+#include <srs_app_st.hpp>
 #include <srs_kernel_error.hpp>
 #include <srs_kernel_log.hpp>
 #include <srs_app_config.hpp>
 #include <srs_app_pithy_print.hpp>
-#include <srs_rtmp_sdk.hpp>
+#include <srs_rtmp_stack.hpp>
 #include <srs_rtmp_utility.hpp>
 #include <srs_protocol_kbps.hpp>
 #include <srs_rtmp_msg_array.hpp>
@@ -163,7 +163,8 @@ int SrsForwarder::on_meta_data(SrsSharedPtrMessage* shared_metadata)
 
     SrsSharedPtrMessage* metadata = shared_metadata->copy();
     
-    if ((ret = jitter->correct(metadata, 0, 0, SrsRtmpJitterAlgorithmFULL)) != ERROR_SUCCESS) {
+    // TODO: FIXME: config the jitter of Forwarder.
+    if ((ret = jitter->correct(metadata, SrsRtmpJitterAlgorithmOFF)) != ERROR_SUCCESS) {
         srs_freep(metadata);
         return ret;
     }
@@ -180,8 +181,9 @@ int SrsForwarder::on_audio(SrsSharedPtrMessage* shared_audio)
     int ret = ERROR_SUCCESS;
     
     SrsSharedPtrMessage* msg = shared_audio->copy();
-
-    if ((ret = jitter->correct(msg, 0, 0, SrsRtmpJitterAlgorithmFULL)) != ERROR_SUCCESS) {
+    
+    // TODO: FIXME: config the jitter of Forwarder.
+    if ((ret = jitter->correct(msg, SrsRtmpJitterAlgorithmOFF)) != ERROR_SUCCESS) {
         srs_freep(msg);
         return ret;
     }
@@ -204,7 +206,8 @@ int SrsForwarder::on_video(SrsSharedPtrMessage* shared_video)
 
     SrsSharedPtrMessage* msg = shared_video->copy();
     
-    if ((ret = jitter->correct(msg, 0, 0, SrsRtmpJitterAlgorithmFULL)) != ERROR_SUCCESS) {
+    // TODO: FIXME: config the jitter of Forwarder.
+    if ((ret = jitter->correct(msg, SrsRtmpJitterAlgorithmOFF)) != ERROR_SUCCESS) {
         srs_freep(msg);
         return ret;
     }

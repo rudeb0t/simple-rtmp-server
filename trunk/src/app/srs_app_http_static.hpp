@@ -21,50 +21,56 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-#ifndef SRS_APP_SECURITY_HPP
-#define SRS_APP_SECURITY_HPP
+#ifndef SRS_APP_HTTP_STATIC_HPP
+#define SRS_APP_HTTP_STATIC_HPP
 
 /*
-#include <srs_app_security.hpp>
+#include <srs_app_http_static.hpp>
 */
 
 #include <srs_core.hpp>
 
-#include <string>
+#include <srs_app_http_conn.hpp>
 
-#include <srs_rtmp_stack.hpp>
-
-class SrsConfDirective;
+#ifdef SRS_AUTO_HTTP_SERVER
 
 /**
-* the security apply on vhost.
-* @see https://github.com/simple-rtmp-server/srs/issues/211
-*/
-class SrsSecurity
+ * the flv vod stream supports flv?start=offset-bytes.
+ * for example, http://server/file.flv?start=10240
+ * server will write flv header and sequence header,
+ * then seek(10240) and response flv tag data.
+ */
+class SrsVodStream : public SrsHttpFileServer
 {
 public:
-    SrsSecurity();
-    virtual ~SrsSecurity();
-public:
-    /**
-    * security check the client apply by vhost security strategy
-    * @param type the client type, publish or play.
-    * @param ip the ip address of client.
-    * @param req the request object of client.
-    */
-    virtual int check(SrsRtmpConnType type, std::string ip, SrsRequest* req);
-private:
-    /**
-    * security check the allow,
-    * @return, if allowed, ERROR_SYSTEM_SECURITY_ALLOW.
-    */
-    virtual int allow_check(SrsConfDirective* rules, SrsRtmpConnType type, std::string ip);
-    /**
-    * security check the deny,
-    * @return, if denied, ERROR_SYSTEM_SECURITY_DENY.
-    */
-    virtual int deny_check(SrsConfDirective* rules, SrsRtmpConnType type, std::string ip);
+    SrsVodStream(std::string root_dir);
+    virtual ~SrsVodStream();
+protected:
+    virtual int serve_flv_stream(ISrsHttpResponseWriter* w, ISrsHttpMessage* r, std::string fullpath, int offset);
+    virtual int serve_mp4_stream(ISrsHttpResponseWriter* w, ISrsHttpMessage* r, std::string fullpath, int start, int end);
 };
+
+/**
+* the http static server instance,
+* serve http static file and flv/mp4 vod stream.
+*/
+class SrsHttpStaticServer : virtual public ISrsReloadHandler
+{
+private:
+    SrsServer* server;
+public:
+    SrsHttpServeMux mux;
+public:
+    SrsHttpStaticServer(SrsServer* svr);
+    virtual ~SrsHttpStaticServer();
+public:
+    virtual int initialize();
+// interface ISrsReloadHandler.
+public:
+    virtual int on_reload_vhost_http_updated();
+};
+
+#endif
 
 #endif
 

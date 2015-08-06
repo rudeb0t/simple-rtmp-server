@@ -41,7 +41,7 @@ using namespace std;
 #include <srs_app_config.hpp>
 #include <srs_app_source.hpp>
 #include <srs_core_autofree.hpp>
-#include <srs_rtmp_sdk.hpp>
+#include <srs_rtmp_stack.hpp>
 #include <srs_app_pithy_print.hpp>
 #include <srs_kernel_utility.hpp>
 #include <srs_kernel_codec.hpp>
@@ -53,6 +53,8 @@ using namespace std;
 
 // drop the segment when duration of ts too small.
 #define SRS_AUTO_HLS_SEGMENT_MIN_DURATION_MS 100
+// when hls timestamp jump, reset it.
+#define SRS_AUTO_HLS_SEGMENT_TIMESTAMP_JUMP_MS 300
 
 // fragment plus the deviation percent.
 #define SRS_HLS_FLOOR_REAP_PERCENT 0.3
@@ -161,6 +163,11 @@ void SrsHlsSegment::update_duration(int64_t current_frame_dts)
     // update the segment duration, which is nagetive,
     // just ignore it.
     if (current_frame_dts < segment_start_dts) {
+        // for atc and timestamp jump, reset the start dts.
+        if (current_frame_dts < segment_start_dts - SRS_AUTO_HLS_SEGMENT_TIMESTAMP_JUMP_MS * 90) {
+            srs_warn("hls timestamp jump %"PRId64"=>%"PRId64, segment_start_dts, current_frame_dts);
+            segment_start_dts = current_frame_dts;
+        }
         return;
     }
     
@@ -280,7 +287,7 @@ SrsHlsMuxer::SrsHlsMuxer()
     previous_floor_ts = 0;
     accept_floor_ts = 0;
     hls_ts_floor = false;
-    target_duration = 0;
+    max_td = 0;
     _sequence_no = 0;
     current = NULL;
     acodec = SrsCodecAudioReserved1;
@@ -400,10 +407,8 @@ int SrsHlsMuxer::update_config(SrsRequest* r, string entry_prefix,
     m3u8_url = srs_path_build_stream(m3u8_file, req->vhost, req->app, req->stream);
     m3u8 = path + "/" + m3u8_url;
 
-    // we always keep the target duration increasing.
-    int max_td = srs_max(target_duration, (int)(fragment * _srs_config->get_hls_td_ratio(r->vhost)));
-    srs_info("hls update target duration %d=>%d, aof=%.2f", target_duration, max_td, aof_ratio);
-    target_duration = max_td;
+    // when update config, reset the history target duration.
+    max_td = (int)(fragment * _srs_config->get_hls_td_ratio(r->vhost));
 
     std::string storage = _srs_config->get_hls_storage(r->vhost);
     if (storage == "ram") {
@@ -699,7 +704,9 @@ int SrsHlsMuxer::segment_close(string log_desc)
     srs_assert(it == segments.end());
 
     // valid, add to segments if segment duration is ok
-    if (current->duration * 1000 >= SRS_AUTO_HLS_SEGMENT_MIN_DURATION_MS) {
+    // when too small, it maybe not enough data to play.
+    // when too large, it maybe timestamp corrupt.
+    if (current->duration * 1000 >= SRS_AUTO_HLS_SEGMENT_MIN_DURATION_MS && (int)current->duration <= max_td) {
         segments.push_back(current);
         
         // use async to call the http hooks, for it will cause thread switch.
@@ -750,9 +757,8 @@ int SrsHlsMuxer::segment_close(string log_desc)
         // rename from tmp to real path
         std::string tmp_file = current->full_path + ".tmp";
         if (should_write_file) {
-            unlink(tmp_file.c_str());
             if (unlink(tmp_file.c_str()) < 0) {
-                srs_warn("drop unlink path failed, file=%s.", tmp_file.c_str());
+                srs_warn("ignore unlink path failed, file=%s.", tmp_file.c_str());
             }
         }
         
@@ -817,6 +823,11 @@ int SrsHlsMuxer::refresh_m3u8()
 {
     int ret = ERROR_SUCCESS;
     
+    // no segments, also no m3u8, return.
+    if (segments.size() == 0) {
+        return ret;
+    }
+    
     std::string temp_m3u8 = m3u8 + ".temp";
     if ((ret = _refresh_m3u8(temp_m3u8)) == ERROR_SUCCESS) {
         if (should_write_file && rename(temp_m3u8.c_str(), m3u8.c_str()) < 0) {
@@ -826,7 +837,11 @@ int SrsHlsMuxer::refresh_m3u8()
     }
     
     // remove the temp file.
-    unlink(temp_m3u8.c_str());
+    if (srs_path_exists(temp_m3u8)) {
+        if (unlink(temp_m3u8.c_str()) < 0) {
+            srs_warn("ignore remove m3u8 failed, %s", temp_m3u8.c_str());
+        }
+    }
     
     return ret;
 }
@@ -861,6 +876,9 @@ int SrsHlsMuxer::_refresh_m3u8(string m3u8_file)
     ss << "#EXT-X-MEDIA-SEQUENCE:" << first->sequence_no << SRS_CONSTS_LF;
     srs_verbose("write m3u8 sequence success.");
     
+    // iterator shared for td generation and segemnts wrote.
+    std::vector<SrsHlsSegment*>::iterator it;
+    
     // #EXT-X-TARGETDURATION:4294967295\n
     /**
     * @see hls-m3u8-draft-pantos-http-live-streaming-12.pdf, page 25
@@ -871,11 +889,13 @@ int SrsHlsMuxer::_refresh_m3u8(string m3u8_file)
     * typical target duration is 10 seconds.
     */
     // @see https://github.com/simple-rtmp-server/srs/issues/304#issuecomment-74000081
-    std::vector<SrsHlsSegment*>::iterator it;
+    int target_duration = 0;
     for (it = segments.begin(); it != segments.end(); ++it) {
         SrsHlsSegment* segment = *it;
         target_duration = srs_max(target_duration, (int)ceil(segment->duration));
     }
+    target_duration = srs_max(target_duration, max_td);
+    
     ss << "#EXT-X-TARGETDURATION:" << target_duration << SRS_CONSTS_LF;
     srs_verbose("write m3u8 duration success.");
     
@@ -950,6 +970,8 @@ int SrsHlsCache::on_publish(SrsHlsMuxer* muxer, SrsRequest* req, int64_t segment
     double hls_aof_ratio = _srs_config->get_hls_aof_ratio(vhost);
     // whether use floor(timestamp/hls_fragment) for variable timestamp
     bool ts_floor = _srs_config->get_hls_ts_floor(vhost);
+    // the seconds to dispose the hls.
+    int hls_dispose = _srs_config->get_hls_dispose(vhost);
     
     // TODO: FIXME: support load exists m3u8, to continue publish stream.
     // for the HLS donot requires the EXT-X-MEDIA-SEQUENCE be monotonically increase.
@@ -967,9 +989,9 @@ int SrsHlsCache::on_publish(SrsHlsMuxer* muxer, SrsRequest* req, int64_t segment
         srs_error("m3u8 muxer open segment failed. ret=%d", ret);
         return ret;
     }
-    srs_trace("hls: win=%.2f, frag=%.2f, prefix=%s, path=%s, m3u8=%s, ts=%s, aof=%.2f, floor=%d, clean=%d, waitk=%d",
+    srs_trace("hls: win=%.2f, frag=%.2f, prefix=%s, path=%s, m3u8=%s, ts=%s, aof=%.2f, floor=%d, clean=%d, waitk=%d, dispose=%d",
         hls_window, hls_fragment, entry_prefix.c_str(), path.c_str(), m3u8_file.c_str(),
-        ts_file.c_str(), hls_aof_ratio, ts_floor, cleanup, wait_keyframe);
+        ts_file.c_str(), hls_aof_ratio, ts_floor, cleanup, wait_keyframe, hls_dispose);
     
     return ret;
 }
@@ -1162,14 +1184,6 @@ void SrsHls::dispose()
         on_unpublish();
     }
     
-    // only dispose hls when positive.
-    if (_req) {
-        int hls_dispose = _srs_config->get_hls_dispose(_req->vhost);
-        if (hls_dispose <= 0) {
-            return;
-        }
-    }
-    
     muxer->dispose();
 }
 
@@ -1188,6 +1202,9 @@ int SrsHls::cycle()
     }
     
     int hls_dispose = _srs_config->get_hls_dispose(_req->vhost) * 1000;
+    if (hls_dispose <= 0) {
+        return ret;
+    }
     if (srs_get_system_time_ms() - last_update_time <= hls_dispose) {
         return ret;
     }
@@ -1337,7 +1354,8 @@ int SrsHls::on_audio(SrsSharedPtrMessage* shared_audio)
         return hls_cache->on_sequence_header(muxer);
     }
     
-    if ((ret = jitter->correct(audio, 0, 0, SrsRtmpJitterAlgorithmFULL)) != ERROR_SUCCESS) {
+    // TODO: FIXME: config the jitter of HLS.
+    if ((ret = jitter->correct(audio, SrsRtmpJitterAlgorithmOFF)) != ERROR_SUCCESS) {
         srs_error("rtmp jitter correct audio failed. ret=%d", ret);
         return ret;
     }
@@ -1394,7 +1412,8 @@ int SrsHls::on_video(SrsSharedPtrMessage* shared_video)
         return hls_cache->on_sequence_header(muxer);
     }
     
-    if ((ret = jitter->correct(video, 0, 0, SrsRtmpJitterAlgorithmFULL)) != ERROR_SUCCESS) {
+    // TODO: FIXME: config the jitter of HLS.
+    if ((ret = jitter->correct(video, SrsRtmpJitterAlgorithmOFF)) != ERROR_SUCCESS) {
         srs_error("rtmp jitter correct video failed. ret=%d", ret);
         return ret;
     }

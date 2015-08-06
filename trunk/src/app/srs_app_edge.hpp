@@ -163,7 +163,6 @@ class SrsPlayEdge
 {
 private:
     SrsEdgeState state;
-    SrsEdgeUserState user_state;
     SrsEdgeIngester* ingester;
 public:
     SrsPlayEdge();
@@ -198,7 +197,6 @@ class SrsPublishEdge
 {
 private:
     SrsEdgeState state;
-    SrsEdgeUserState user_state;
     SrsEdgeForwarder* forwarder;
 public:
     SrsPublishEdge();
@@ -207,6 +205,7 @@ public:
     virtual void set_queue_size(double queue_size);
 public:
     virtual int initialize(SrsSource* source, SrsRequest* req);
+    virtual bool can_publish();
     /**
     * when client publish stream on edge.
     */

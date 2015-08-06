@@ -496,7 +496,7 @@ SrsServer::SrsServer()
     http_api_mux = new SrsHttpServeMux();
 #endif
 #ifdef SRS_AUTO_HTTP_SERVER
-    http_stream_mux = new SrsHttpServer(this);
+    http_server = new SrsHttpServer(this);
 #endif
 #ifdef SRS_AUTO_HTTP_CORE
     http_heartbeat = NULL;
@@ -522,7 +522,7 @@ void SrsServer::destroy()
 #endif
 
 #ifdef SRS_AUTO_HTTP_SERVER
-    srs_freep(http_stream_mux);
+    srs_freep(http_server);
 #endif
 
 #ifdef SRS_AUTO_HTTP_CORE
@@ -569,7 +569,7 @@ void SrsServer::dispose()
         st_usleep(100 * 1000);
     }
     
-#ifdef SRS_MEM_WATCH
+#ifdef SRS_AUTO_MEM_WATCH
     srs_memory_report();
 #endif
 }
@@ -602,8 +602,8 @@ int SrsServer::initialize(ISrsServerCycle* cycle_handler)
 #endif
 
 #ifdef SRS_AUTO_HTTP_SERVER
-    srs_assert(http_stream_mux);
-    if ((ret = http_stream_mux->initialize()) != ERROR_SUCCESS) {
+    srs_assert(http_server);
+    if ((ret = http_server->initialize()) != ERROR_SUCCESS) {
         return ret;
     }
 #endif
@@ -810,13 +810,6 @@ int SrsServer::http_handle()
         return ret;
     }
 #endif
-    
-#if defined(SRS_AUTO_HTTP_SERVER) && defined(SRS_AUTO_HTTP_API)
-    // for SRS go-sharp to detect the status of HTTP server of SRS HTTP FLV Cluster.
-    if ((ret = http_stream_mux->mux.handle("/api/v1/versions", new SrsGoApiVersion())) != ERROR_SUCCESS) {
-        return ret;
-    }
-#endif
 
     return ret;
 }
@@ -893,7 +886,7 @@ void SrsServer::on_signal(int signo)
         signal_gmc_stop = true;
 #else
         srs_trace("user terminate program");
-#ifdef SRS_MEM_WATCH
+#ifdef SRS_AUTO_MEM_WATCH
         srs_memory_report();
 #endif
         exit(0);
@@ -1127,11 +1120,11 @@ int SrsServer::listen_stream_caster()
         SrsListener* listener = NULL;
 
         std::string caster = _srs_config->get_stream_caster_engine(stream_caster);
-        if (caster == SRS_CONF_DEFAULT_STREAM_CASTER_MPEGTS_OVER_UDP) {
+        if (srs_stream_caster_is_udp(caster)) {
             listener = new SrsUdpCasterListener(this, SrsListenerMpegTsOverUdp, stream_caster);
-        } else if (caster == SRS_CONF_DEFAULT_STREAM_CASTER_RTSP) {
+        } else if (srs_stream_caster_is_rtsp(caster)) {
             listener = new SrsRtspListener(this, SrsListenerRtsp, stream_caster);
-        } else if (caster == SRS_CONF_DEFAULT_STREAM_CASTER_FLV) {
+        } else if (srs_stream_caster_is_flv(caster)) {
             listener = new SrsHttpFlvListener(this, SrsListenerFlv, stream_caster);
         } else {
             ret = ERROR_STREAM_CASTER_ENGINE;
@@ -1226,7 +1219,7 @@ int SrsServer::accept_client(SrsListenerType type, st_netfd_t client_stfd)
 #endif
     } else if (type == SrsListenerHttpStream) {
 #ifdef SRS_AUTO_HTTP_SERVER
-        conn = new SrsStaticHttpConn(this, client_stfd, &http_stream_mux->mux);
+        conn = new SrsResponseOnlyHttpConn(this, client_stfd, http_server);
 #else
         srs_warn("close http client for server not support http-server");
         srs_close_stfd(client_stfd);
@@ -1277,6 +1270,7 @@ int SrsServer::on_reload_vhost_added(std::string vhost)
         return ret;
     }
     
+    // TODO: FIXME: should handle the event in SrsHttpStaticServer
     if ((ret = on_reload_vhost_http_updated()) != ERROR_SUCCESS) {
         return ret;
     }
@@ -1290,6 +1284,7 @@ int SrsServer::on_reload_vhost_removed(std::string /*vhost*/)
     int ret = ERROR_SUCCESS;
     
 #ifdef SRS_AUTO_HTTP_SERVER
+    // TODO: FIXME: should handle the event in SrsHttpStaticServer
     if ((ret = on_reload_vhost_http_updated()) != ERROR_SUCCESS) {
         return ret;
     }
@@ -1342,6 +1337,7 @@ int SrsServer::on_reload_http_stream_disabled()
     return ret;
 }
 
+// TODO: FIXME: rename to http_remux
 int SrsServer::on_reload_http_stream_updated()
 {
     int ret = ERROR_SUCCESS;
@@ -1351,6 +1347,7 @@ int SrsServer::on_reload_http_stream_updated()
         return ret;
     }
     
+    // TODO: FIXME: should handle the event in SrsHttpStaticServer
     if ((ret = on_reload_vhost_http_updated()) != ERROR_SUCCESS) {
         return ret;
     }
@@ -1364,7 +1361,7 @@ int SrsServer::on_publish(SrsSource* s, SrsRequest* r)
     int ret = ERROR_SUCCESS;
     
 #ifdef SRS_AUTO_HTTP_SERVER
-    if ((ret = http_stream_mux->http_mount(s, r)) != ERROR_SUCCESS) {
+    if ((ret = http_server->http_mount(s, r)) != ERROR_SUCCESS) {
         return ret;
     }
 #endif
@@ -1375,7 +1372,7 @@ int SrsServer::on_publish(SrsSource* s, SrsRequest* r)
 void SrsServer::on_unpublish(SrsSource* s, SrsRequest* r)
 {
 #ifdef SRS_AUTO_HTTP_SERVER
-    http_stream_mux->http_unmount(s, r);
+    http_server->http_unmount(s, r);
 #endif
 }
 
@@ -1384,7 +1381,7 @@ int SrsServer::on_hls_publish(SrsRequest* r)
     int ret = ERROR_SUCCESS;
     
 #ifdef SRS_AUTO_HTTP_SERVER
-    if ((ret = http_stream_mux->mount_hls(r)) != ERROR_SUCCESS) {
+    if ((ret = http_server->mount_hls(r)) != ERROR_SUCCESS) {
         return ret;
     }
 #endif
@@ -1397,7 +1394,7 @@ int SrsServer::on_update_m3u8(SrsRequest* r, string m3u8)
     int ret = ERROR_SUCCESS;
     
 #ifdef SRS_AUTO_HTTP_SERVER
-    if ((ret = http_stream_mux->hls_update_m3u8(r, m3u8)) != ERROR_SUCCESS) {
+    if ((ret = http_server->hls_update_m3u8(r, m3u8)) != ERROR_SUCCESS) {
         return ret;
     }
 #endif
@@ -1410,7 +1407,7 @@ int SrsServer::on_update_ts(SrsRequest* r, string uri, string ts)
     int ret = ERROR_SUCCESS;
     
 #ifdef SRS_AUTO_HTTP_SERVER
-    if ((ret = http_stream_mux->hls_update_ts(r, uri, ts)) != ERROR_SUCCESS) {
+    if ((ret = http_server->hls_update_ts(r, uri, ts)) != ERROR_SUCCESS) {
         return ret;
     }
 #endif
@@ -1424,7 +1421,7 @@ int SrsServer::on_remove_ts(SrsRequest* r, string uri)
     int ret = ERROR_SUCCESS;
     
 #ifdef SRS_AUTO_HTTP_SERVER
-    if ((ret = http_stream_mux->hls_remove_ts(r, uri)) != ERROR_SUCCESS) {
+    if ((ret = http_server->hls_remove_ts(r, uri)) != ERROR_SUCCESS) {
         return ret;
     }
 #endif
@@ -1437,7 +1434,7 @@ int SrsServer::on_hls_unpublish(SrsRequest* r)
     int ret = ERROR_SUCCESS;
     
 #ifdef SRS_AUTO_HTTP_SERVER
-    http_stream_mux->unmount_hls(r);
+    http_server->unmount_hls(r);
 #endif
     
     return ret;
