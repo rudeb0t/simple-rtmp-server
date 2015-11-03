@@ -43,7 +43,7 @@ using namespace std;
 #include <srs_kernel_utility.hpp>
 #include <srs_kernel_error.hpp>
 #include <srs_protocol_kbps.hpp>
-#include <srs_app_json.hpp>
+#include <srs_protocol_json.hpp>
 #include <srs_kernel_stream.hpp>
 
 // the longest time to wait for a process to quit.
@@ -161,11 +161,6 @@ string srs_path_build_timestamp(string template_path)
     
     // [2006], replace with current year.
     if (true) {
-        snprintf(buf, sizeof(buf), "%d", 1900 + tm->tm_year);
-        path = srs_string_replace(path, "[2006]", buf);
-    }
-    // [2006], replace with current year.
-    if (true) {
         snprintf(buf, sizeof(buf), "%04d", 1900 + tm->tm_year);
         path = srs_string_replace(path, "[2006]", buf);
     }
@@ -274,8 +269,11 @@ int srs_kill_forced(int& pid)
     // other signals, directly exit(123), for example:
     //        9) SIGKILL    15) SIGTERM
     int status = 0;
-    if (waitpid(pid, &status, 0) < 0) {
-        return ERROR_SYSTEM_KILL;
+    // @remark when we use SIGKILL to kill process, it must be killed,
+    //      so we always wait it to quit by infinite loop.
+    while (waitpid(pid, &status, 0) < 0) {
+        st_usleep(10 * 1000);
+        continue;
     }
     
     srs_trace("SIGKILL stop process pid=%d ok.", pid);

@@ -433,7 +433,7 @@ int SrsConfDirective::read_token(SrsConfigBuffer* buffer, vector<string>& args, 
                 if (!word_str.empty()) {
                     args.push_back(word_str);
                 }
-                srs_freep(aword);
+                srs_freepa(aword);
                 
                 if (ch == ';') {
                     return ERROR_SYSTEM_CONFIG_DIRECTIVE;
@@ -618,6 +618,9 @@ int SrsConfig::reload_vhost(SrsConfDirective* old_root)
             srs_error("reload never supports mode changed. ret=%d", ret);
             return ret;
         }
+        
+        // the auto reload configs:
+        //      publish.parse_sps
     
         //      ENABLED     =>  ENABLED (modified)
         if (get_vhost_enabled(new_vhost) && get_vhost_enabled(old_vhost)) {
@@ -756,6 +759,50 @@ int SrsConfig::reload_vhost(SrsConfDirective* old_root)
                     }
                 }
                 srs_trace("vhost %s reload mw success.", vhost.c_str());
+            }
+            // smi(send_min_interval), only one per vhost
+            if (!srs_directive_equals(new_vhost->get("send_min_interval"), old_vhost->get("send_min_interval"))) {
+                for (it = subscribes.begin(); it != subscribes.end(); ++it) {
+                    ISrsReloadHandler* subscribe = *it;
+                    if ((ret = subscribe->on_reload_vhost_smi(vhost)) != ERROR_SUCCESS) {
+                        srs_error("vhost %s notify subscribes smi failed. ret=%d", vhost.c_str(), ret);
+                        return ret;
+                    }
+                }
+                srs_trace("vhost %s reload smi success.", vhost.c_str());
+            }
+            // tcp_nodelay, only one per vhost
+            if (!srs_directive_equals(new_vhost->get("tcp_nodelay"), old_vhost->get("tcp_nodelay"))) {
+                for (it = subscribes.begin(); it != subscribes.end(); ++it) {
+                    ISrsReloadHandler* subscribe = *it;
+                    if ((ret = subscribe->on_reload_vhost_tcp_nodelay(vhost)) != ERROR_SUCCESS) {
+                        srs_error("vhost %s notify subscribes tcp_nodelay failed. ret=%d", vhost.c_str(), ret);
+                        return ret;
+                    }
+                }
+                srs_trace("vhost %s reload tcp_nodelay success.", vhost.c_str());
+            }
+            // publish_1stpkt_timeout, only one per vhost
+            if (!srs_directive_equals(new_vhost->get("publish_1stpkt_timeout"), old_vhost->get("publish_1stpkt_timeout"))) {
+                for (it = subscribes.begin(); it != subscribes.end(); ++it) {
+                    ISrsReloadHandler* subscribe = *it;
+                    if ((ret = subscribe->on_reload_vhost_p1stpt(vhost)) != ERROR_SUCCESS) {
+                        srs_error("vhost %s notify subscribes p1stpt failed. ret=%d", vhost.c_str(), ret);
+                        return ret;
+                    }
+                }
+                srs_trace("vhost %s reload p1stpt success.", vhost.c_str());
+            }
+            // publish_normal_timeout, only one per vhost
+            if (!srs_directive_equals(new_vhost->get("publish_normal_timeout"), old_vhost->get("publish_normal_timeout"))) {
+                for (it = subscribes.begin(); it != subscribes.end(); ++it) {
+                    ISrsReloadHandler* subscribe = *it;
+                    if ((ret = subscribe->on_reload_vhost_pnt(vhost)) != ERROR_SUCCESS) {
+                        srs_error("vhost %s notify subscribes pnt failed. ret=%d", vhost.c_str(), ret);
+                        return ret;
+                    }
+                }
+                srs_trace("vhost %s reload pnt success.", vhost.c_str());
             }
             // min_latency, only one per vhost
             if (!srs_directive_equals(new_vhost->get("min_latency"), old_vhost->get("min_latency"))) {
@@ -913,12 +960,24 @@ int SrsConfig::reload_conf(SrsConfig* conf)
         srs_trace("reload srs_log_file success.");
     }
     
+    // merge config: utc_time
+    if (!srs_directive_equals(root->get("utc_time"), old_root->get("utc_time"))) {
+        for (it = subscribes.begin(); it != subscribes.end(); ++it) {
+            ISrsReloadHandler* subscribe = *it;
+            if ((ret = subscribe->on_reload_utc_time()) != ERROR_SUCCESS) {
+                srs_error("notify subscribes reload utc_time failed. ret=%d", ret);
+                return ret;
+            }
+        }
+        srs_trace("reload utc_time success.");
+    }
+    
     // merge config: pithy_print_ms
     if (!srs_directive_equals(root->get("pithy_print_ms"), old_root->get("pithy_print_ms"))) {
         for (it = subscribes.begin(); it != subscribes.end(); ++it) {
             ISrsReloadHandler* subscribe = *it;
             if ((ret = subscribe->on_reload_pithy_print()) != ERROR_SUCCESS) {
-                srs_error("notify subscribes pithy_print_ms listen failed. ret=%d", ret);
+                srs_error("notify subscribes pithy_print_ms failed. ret=%d", ret);
                 return ret;
             }
         }
@@ -1750,7 +1809,9 @@ int SrsConfig::check_config()
                 && n != "time_jitter" && n != "mix_correct"
                 && n != "atc" && n != "atc_auto"
                 && n != "debug_srs_upnode"
-                && n != "mr" && n != "mw_latency" && n != "min_latency"
+                && n != "mr" && n != "mw_latency" && n != "min_latency" && n != "publish"
+                && n != "tcp_nodelay" && n != "send_min_interval" && n != "reduce_sequence_header"
+                && n != "publish_1stpkt_timeout" && n != "publish_normal_timeout"
                 && n != "security" && n != "http_remux"
                 && n != "http" && n != "http_static"
                 && n != "hds"
@@ -1778,6 +1839,16 @@ int SrsConfig::check_config()
                         ) {
                         ret = ERROR_SYSTEM_CONFIG_INVALID;
                         srs_error("unsupported vhost mr directive %s, ret=%d", m.c_str(), ret);
+                        return ret;
+                    }
+                }
+            } else if (n == "publish") {
+                for (int j = 0; j < (int)conf->directives.size(); j++) {
+                    string m = conf->at(j)->name.c_str();
+                    if (m != "parse_sps"
+                        ) {
+                        ret = ERROR_SYSTEM_CONFIG_INVALID;
+                        srs_error("unsupported vhost publish directive %s, ret=%d", m.c_str(), ret);
                         return ret;
                     }
                 }
@@ -2415,6 +2486,29 @@ int SrsConfig::get_chunk_size(string vhost)
     return ::atoi(conf->arg0().c_str());
 }
 
+bool SrsConfig::get_parse_sps(string vhost)
+{
+    static bool DEFAULT = true;
+    
+    SrsConfDirective* conf = get_vhost(vhost);
+    
+    if (!conf) {
+        return DEFAULT;
+    }
+    
+    conf = conf->get("publish");
+    if (!conf) {
+        return DEFAULT;
+    }
+    
+    conf = conf->get("parse_sps");
+    if (!conf || conf->arg0().empty()) {
+        return DEFAULT;
+    }
+    
+    return SRS_CONF_PERFER_TRUE(conf->arg0());
+}
+
 bool SrsConfig::get_mr_enabled(string vhost)
 {
     SrsConfDirective* conf = get_vhost(vhost);
@@ -2487,6 +2581,95 @@ bool SrsConfig::get_realtime_enabled(string vhost)
     }
 
     return SRS_CONF_PERFER_FALSE(conf->arg0());
+}
+
+bool SrsConfig::get_tcp_nodelay(string vhost)
+{
+    static bool DEFAULT = false;
+    
+    SrsConfDirective* conf = get_vhost(vhost);
+    if (!conf) {
+        return DEFAULT;
+    }
+    
+    conf = conf->get("tcp_nodelay");
+    if (!conf || conf->arg0().empty()) {
+        return DEFAULT;
+    }
+    
+    return SRS_CONF_PERFER_FALSE(conf->arg0());
+}
+
+double SrsConfig::get_send_min_interval(string vhost)
+{
+    static double DEFAULT = 0.0;
+    
+    SrsConfDirective* conf = get_vhost(vhost);
+    if (!conf) {
+        return DEFAULT;
+    }
+    
+    conf = conf->get("send_min_interval");
+    if (!conf || conf->arg0().empty()) {
+        return DEFAULT;
+    }
+    
+    return ::atof(conf->arg0().c_str());
+}
+
+bool SrsConfig::get_reduce_sequence_header(string vhost)
+{
+    static bool DEFAULT = false;
+    
+    SrsConfDirective* conf = get_vhost(vhost);
+    if (!conf) {
+        return DEFAULT;
+    }
+    
+    conf = conf->get("reduce_sequence_header");
+    if (!conf || conf->arg0().empty()) {
+        return DEFAULT;
+    }
+    
+    return SRS_CONF_PERFER_FALSE(conf->arg0());
+}
+
+int SrsConfig::get_publish_1stpkt_timeout(string vhost)
+{
+    // when no msg recevied for publisher, use larger timeout.
+    static int DEFAULT = 20000;
+    
+    SrsConfDirective* conf = get_vhost(vhost);
+    if (!conf) {
+        return DEFAULT;
+    }
+    
+    conf = conf->get("publish_1stpkt_timeout");
+    if (!conf || conf->arg0().empty()) {
+        return DEFAULT;
+    }
+    
+    return ::atoi(conf->arg0().c_str());
+}
+
+int SrsConfig::get_publish_normal_timeout(string vhost)
+{
+    // the timeout for publish recv.
+    // we must use more smaller timeout, for the recv never know the status
+    // of underlayer socket.
+    static int DEFAULT = 5000;
+    
+    SrsConfDirective* conf = get_vhost(vhost);
+    if (!conf) {
+        return DEFAULT;
+    }
+    
+    conf = conf->get("publish_normal_timeout");
+    if (!conf || conf->arg0().empty()) {
+        return DEFAULT;
+    }
+    
+    return ::atoi(conf->arg0().c_str());
 }
 
 int SrsConfig::get_global_chunk_size()
@@ -4305,7 +4488,7 @@ namespace _srs_internal
     
     SrsConfigBuffer::~SrsConfigBuffer()
     {
-        srs_freep(start);
+        srs_freepa(start);
     }
     
     int SrsConfigBuffer::fullfill(const char* filename)
@@ -4324,7 +4507,7 @@ namespace _srs_internal
         int filesize = (int)reader.filesize();
         
         // create buffer
-        srs_freep(start);
+        srs_freepa(start);
         pos = last = start = new char[filesize];
         end = start + filesize;
         

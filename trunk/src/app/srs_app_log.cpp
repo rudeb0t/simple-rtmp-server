@@ -57,6 +57,20 @@ int SrsThreadContext::get_id()
     return cache[st_thread_self()];
 }
 
+int SrsThreadContext::set_id(int v)
+{
+    st_thread_t self = st_thread_self();
+    
+    int ov = 0;
+    if (cache.find(self) != cache.end()) {
+        ov = cache[self];
+    }
+    
+    cache[self] = v;
+    
+    return ov;
+}
+
 // the max size of a line of log.
 #define LOG_MAX_SIZE 4096
 
@@ -72,11 +86,12 @@ SrsFastLog::SrsFastLog()
 
     fd = -1;
     log_to_file_tank = false;
+    utc = false;
 }
 
 SrsFastLog::~SrsFastLog()
 {
-    srs_freep(log_data);
+    srs_freepa(log_data);
 
     if (fd > 0) {
         ::close(fd);
@@ -97,6 +112,7 @@ int SrsFastLog::initialize()
     
         log_to_file_tank = _srs_config->get_log_tank_file();
         _level = srs_get_log_level(_srs_config->get_log_level());
+        utc = _srs_config->get_utc_time();
     }
     
     return ret;
@@ -207,6 +223,13 @@ void SrsFastLog::error(const char* tag, int context_id, const char* fmt, ...)
     write_log(fd, log_data, size, SrsLogLevel::Error);
 }
 
+int SrsFastLog::on_reload_utc_time()
+{
+    utc = _srs_config->get_utc_time();
+    
+    return ERROR_SUCCESS;
+}
+
 int SrsFastLog::on_reload_log_tank()
 {
     int ret = ERROR_SUCCESS;
@@ -277,7 +300,7 @@ bool SrsFastLog::generate_header(bool error, const char* tag, int context_id, co
     
     // to calendar time
     struct tm* tm;
-    if (_srs_config && _srs_config->get_utc_time()) {
+    if (utc) {
         if ((tm = gmtime(&tv.tv_sec)) == NULL) {
             return false;
         }

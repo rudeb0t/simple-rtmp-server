@@ -100,9 +100,8 @@ SRS_DISABLE_ALL=NO
 SRS_ENABLE_ALL=NO
 #
 ################################################################
-# calc
-# whether embed cpu, arm/mips
-SRS_EMBEDED_CPU=NO
+# whether cross build for embed cpu, arm/mips
+SRS_CROSS_BUILD=NO
 
 #####################################################################################
 # menu
@@ -139,7 +138,7 @@ Options:
   --with-gmp                build memory profile for SRS with gperf tools.
   --with-gcp                build cpu profile for SRS with gperf tools.
   --with-gprof              build SRS with gprof(GNU profile tool).
-  --with-arm-ubuntu12       build SRS on ubuntu12 for armhf(v7cpu).
+  --with-arm-ubuntu12       cross build SRS on ubuntu12 for armhf(v7cpu).
                           
   --without-ssl             disable rtmp complex handshake.
   --without-hls             disable hls, the apple http live streaming.
@@ -162,7 +161,7 @@ Options:
   --without-gmp             do not build memory profile for SRS with gperf tools.
   --without-gcp             do not build cpu profile for SRS with gperf tools.
   --without-gprof           do not build srs with gprof(GNU profile tool).
-  --without-arm-ubuntu12    do not build srs on ubuntu12 for armhf(v7cpu).
+  --without-arm-ubuntu12    do not cross build srs on ubuntu12 for armhf(v7cpu).
                           
   --prefix=<path>           the absolute install path for srs.
   --static                  whether add '-static' to link options.
@@ -364,10 +363,10 @@ function apply_user_presets() {
     
     # whether embeded cpu.
     if [ $SRS_ARM_UBUNTU12 = YES ]; then
-        SRS_EMBEDED_CPU=YES
+        SRS_CROSS_BUILD=YES
     fi
     if [ $SRS_MIPS_UBUNTU12 = YES ]; then
-        SRS_EMBEDED_CPU=YES
+        SRS_CROSS_BUILD=YES
     fi
 
     # all disabled.
@@ -880,7 +879,7 @@ function check_option_conflicts() {
 
     # check embeded(arm/mips), if embeded enabled, only allow st/ssl/librtmp,
     # user should disable all other features
-    if [ $SRS_EMBEDED_CPU = YES ]; then
+    if [ $SRS_CROSS_BUILD = YES ]; then
         if [ $SRS_FFMPEG_TOOL = YES ]; then echo "ffmpeg for arm is not available, see: ./configure --help"; __check_ok=NO; fi
         if [ $SRS_RESEARCH = YES ]; then echo "research for arm is not available, see: ./configure --help"; __check_ok=NO; fi
         if [ $SRS_GPERF = YES ]; then echo "gperf for arm is not available, see: ./configure --help"; __check_ok=NO; fi

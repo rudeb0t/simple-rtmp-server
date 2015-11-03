@@ -622,6 +622,7 @@ enum SrsRtmpConnType
     SrsRtmpConnFlashPublish,
 };
 std::string srs_client_type_string(SrsRtmpConnType type);
+bool srs_client_type_is_publish(SrsRtmpConnType type);
 
 /**
  * store the handshake bytes,
@@ -1991,6 +1992,13 @@ enum SrcPCUCEventType
     * kMsgPingRequest request.
     */
     SrcPCUCPingResponse             = 0x07,
+    
+    /**
+     * for PCUC size=3, the payload is "00 1A 01",
+     * where we think the event is 0x001a, fms defined msg,
+     * which has only 1bytes event data.
+     */
+    SrsPCUCFmsEvent0                = 0x1a,
 };
 
 /**
@@ -2019,6 +2027,11 @@ public:
     * @see: SrcPCUCEventType
     */
     int16_t event_type;
+    /**
+     * the event data generally in 4bytes.
+     * @remark for event type is 0x001a, only 1bytes.
+     * @see SrsPCUCFmsEvent0
+     */
     int32_t event_data;
     /**
     * 4bytes if event_type is SetBufferLength; otherwise 0.

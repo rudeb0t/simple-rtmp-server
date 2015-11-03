@@ -148,7 +148,7 @@ int SrsDynamicHttpConn::proxy(ISrsHttpResponseWriter* w, ISrsHttpMessage* r, std
     srs_trace("flv: proxy %s to %s", r->uri().c_str(), output.c_str());
     
     char* buffer = new char[SRS_HTTP_FLV_STREAM_BUFFER];
-    SrsAutoFree(char, buffer);
+    SrsAutoFreeA(char, buffer);
     
     ISrsHttpResponseReader* rr = r->body_reader();
     SrsHttpFileReader reader(rr);
@@ -205,7 +205,7 @@ int SrsDynamicHttpConn::do_proxy(ISrsHttpResponseReader* rr, SrsFlvDecoder* dec)
         
         char* data = new char[size];
         if ((ret = dec->read_tag_data(data, size)) != ERROR_SUCCESS) {
-            srs_freep(data);
+            srs_freepa(data);
             if (!srs_is_client_gracefully_close(ret)) {
                 srs_error("flv: proxy tag data failed. ret=%d", ret);
             }

@@ -246,12 +246,6 @@ extern int aac_sample_rates[];
 #define SRS_SRS_MAX_CODEC_SAMPLE 128
 #define SRS_AAC_SAMPLE_RATE_UNSET 15
 
-// in ms, for HLS aac flush the audio
-#define SRS_CONF_DEFAULT_AAC_DELAY 60
-
-// max PES packets size to flush the video.
-#define SRS_AUTO_HLS_AUDIO_CACHE_SIZE 128 * 1024
-
 /**
 * the FLV/RTMP supported audio sample size.
 * Size of each audio sample. This parameter only pertains to
@@ -525,6 +519,8 @@ enum SrsAvcLevel
 };
 std::string srs_codec_avc_level2str(SrsAvcLevel level);
 
+#if !defined(SRS_EXPORT_LIBRTMP)
+
 /**
 * the h264/avc and aac codec, for media stream.
 *
@@ -606,6 +602,9 @@ public:
     int             aac_extra_size;
     char*           aac_extra_data;
 public:
+    // for sequence header, whether parse the h.264 sps.
+    bool            avc_parse_sps;
+public:
     SrsAvcAacCodec();
     virtual ~SrsAvcAacCodec();
 public:
@@ -660,3 +659,6 @@ private:
 };
 
 #endif
+
+#endif
+

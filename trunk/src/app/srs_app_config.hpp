@@ -500,6 +500,10 @@ public:
     */
     virtual int                 get_chunk_size(std::string vhost);
     /**
+     * whether parse the sps when publish stream to SRS.
+     */
+    virtual bool                get_parse_sps(std::string vhost);
+    /**
     * whether mr is enabled for vhost.
     * @param vhost, the vhost to get the mr.
     */
@@ -522,6 +526,26 @@ public:
     */
     // TODO: FIXME: add utest for min_latency.
     virtual bool                get_realtime_enabled(std::string vhost);
+    /**
+     * whether enable tcp nodelay for all clients of vhost.
+     */
+    virtual bool                get_tcp_nodelay(std::string vhost);
+    /**
+     * the minimal send interval in ms.
+     */
+    virtual double              get_send_min_interval(std::string vhost);
+    /**
+     * whether reduce the sequence header.
+     */
+    virtual bool                get_reduce_sequence_header(std::string vhost);
+    /**
+     * the 1st packet timeout in ms for encoder.
+     */
+    virtual int                 get_publish_1stpkt_timeout(std::string vhost);
+    /**
+     * the normal packet timeout in ms for encoder.
+     */
+    virtual int                 get_publish_normal_timeout(std::string vhost);
 private:
     /**
     * get the global chunk size.

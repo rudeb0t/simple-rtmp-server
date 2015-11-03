@@ -29,6 +29,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 #include <srs_core.hpp>
 
+#if !defined(SRS_EXPORT_LIBRTMP)
+
 #include <string>
 #include <map>
 #include <vector>
@@ -51,6 +53,9 @@ class SrsTsContext;
 
 // Transport Stream packets are 188 bytes in length.
 #define SRS_TS_PACKET_SIZE          188
+
+// the aggregate pure audio for hls, in ts tbn(ms * 90).
+#define SRS_CONSTS_HLS_PURE_AUDIO_AGGREGATE 720 * 90
 
 /**
 * the pid of ts packet,
@@ -357,6 +362,7 @@ public:
     /**
      * whether the hls stream is pure audio stream.
      */
+    // TODO: FIXME: merge with muxer codec detect.
     virtual bool is_pure_audio();
     /**
      * when PMT table parsed, we know some info about stream.
@@ -1584,6 +1590,11 @@ public:
     * close the writer.
     */
     virtual void close();
+public:
+    /**
+     * get the video codec of ts muxer.
+     */
+    virtual SrsCodecVideo video_codec();
 };
 
 /**
@@ -1653,6 +1664,8 @@ private:
     virtual int flush_audio();
     virtual int flush_video();
 };
+
+#endif
 
 #endif
 

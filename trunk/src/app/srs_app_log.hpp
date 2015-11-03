@@ -53,6 +53,7 @@ public:
 public:
     virtual int generate_id();
     virtual int get_id();
+    virtual int set_id(int v);
 };
 
 /**
@@ -72,6 +73,8 @@ private:
     int fd;
     // whether log to file tank
     bool log_to_file_tank;
+    // whether use utc time.
+    bool utc;
 public:
     SrsFastLog();
     virtual ~SrsFastLog();
@@ -84,6 +87,7 @@ public:
     virtual void error(const char* tag, int context_id, const char* fmt, ...);
 // interface ISrsReloadHandler.
 public:
+    virtual int on_reload_utc_time();
     virtual int on_reload_log_tank();
     virtual int on_reload_log_level();
     virtual int on_reload_log_file();

@@ -103,7 +103,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ///////////////////////////////////////////////////////
 #define ERROR_RTMP_PLAIN_REQUIRED           2000
 #define ERROR_RTMP_CHUNK_START              2001
-#define ERROR_RTMP_MSG_INVLIAD_SIZE         2002
+#define ERROR_RTMP_MSG_INVALID_SIZE         2002
 #define ERROR_RTMP_AMF0_DECODE              2003
 #define ERROR_RTMP_AMF0_INVALID             2004
 #define ERROR_RTMP_REQ_CONNECT              2005
@@ -149,6 +149,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define ERROR_RTP_TYPE96_CORRUPT            2045
 #define ERROR_RTP_TYPE97_CORRUPT            2046
 #define ERROR_RTSP_AUDIO_CONFIG             2047
+#define ERROR_RTMP_STREAM_NOT_FOUND         2048
+#define ERROR_RTMP_CLIENT_NOT_FOUND         2049
 //                                           
 // system control message, 
 // not an error, but special control logic.
@@ -168,7 +170,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define ERROR_HLS_AAC_FRAME_LENGTH          3005
 #define ERROR_HLS_AVC_SAMPLE_SIZE           3006
 #define ERROR_HTTP_PARSE_URI                3007
-#define ERROR_HTTP_DATA_INVLIAD             3008
+#define ERROR_HTTP_DATA_INVALID             3008
 #define ERROR_HTTP_PARSE_HEADER             3009
 #define ERROR_HTTP_HANDLER_MATCH_URL        3010
 #define ERROR_HTTP_HANDLER_INVALID          3011
@@ -225,6 +227,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define ERROR_HLS_NO_STREAM                 3062
 #define ERROR_JSON_LOADS                    3063
 #define ERROR_RESPONSE_CODE                 3064
+#define ERROR_RESPONSE_DATA                 3065
+#define ERROR_REQUEST_DATA                  3066
 
 ///////////////////////////////////////////////////////
 // HTTP/StreamCaster protocol error.
@@ -234,7 +238,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define ERROR_HTTP_URL_NOT_CLEAN            4002
 #define ERROR_HTTP_CONTENT_LENGTH           4003
 #define ERROR_HTTP_LIVE_STREAM_EXT          4004
-#define ERROR_HTTP_STATUS_INVLIAD           4005
+#define ERROR_HTTP_STATUS_INVALID           4005
 #define ERROR_KERNEL_AAC_STREAM_CLOSED      4006
 #define ERROR_AAC_DECODE_ERROR              4007
 #define ERROR_KERNEL_MP3_STREAM_CLOSED      4008
@@ -259,6 +263,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define ERROR_AVC_NALU_UEV                  4027
 #define ERROR_AAC_BYTES_INVALID             4028
 #define ERROR_HTTP_REQUEST_EOF              4029
+
+///////////////////////////////////////////////////////
+// HTTP API error.
+///////////////////////////////////////////////////////
+//#define ERROR_API_METHOD_NOT_ALLOWD
 
 ///////////////////////////////////////////////////////
 // user-define error.

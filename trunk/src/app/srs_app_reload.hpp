@@ -44,6 +44,7 @@ public:
     ISrsReloadHandler();
     virtual ~ISrsReloadHandler();
 public:
+    virtual int on_reload_utc_time();
     virtual int on_reload_max_conns();
     virtual int on_reload_listen();
     virtual int on_reload_pid();
@@ -73,7 +74,11 @@ public:
     virtual int on_reload_vhost_dvr(std::string vhost);
     virtual int on_reload_vhost_mr(std::string vhost);
     virtual int on_reload_vhost_mw(std::string vhost);
+    virtual int on_reload_vhost_smi(std::string vhost);
+    virtual int on_reload_vhost_tcp_nodelay(std::string vhost);
     virtual int on_reload_vhost_realtime(std::string vhost);
+    virtual int on_reload_vhost_p1stpt(std::string vhost);
+    virtual int on_reload_vhost_pnt(std::string vhost);
     virtual int on_reload_vhost_chunk_size(std::string vhost);
     virtual int on_reload_vhost_transcode(std::string vhost);
     virtual int on_reload_ingest_removed(std::string vhost, std::string ingest_id);

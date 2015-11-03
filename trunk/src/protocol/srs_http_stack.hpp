@@ -25,9 +25,11 @@
 #define SRS_PROTOCOL_HTTP_HPP
 
 /*
- #include <srs_http_stack.hpp>
- */
+#include <srs_http_stack.hpp>
+*/
 #include <srs_core.hpp>
+
+#if !defined(SRS_EXPORT_LIBRTMP)
 
 #include <map>
 #include <string>
@@ -76,8 +78,10 @@ class ISrsHttpResponseWriter;
 #define SRS_CONSTS_HTTP_PUT HTTP_PUT
 #define SRS_CONSTS_HTTP_DELETE HTTP_DELETE
 
-// helper function: response in json format.
-extern int srs_http_response_json(ISrsHttpResponseWriter* w, std::string data);
+// Error replies to the request with the specified error message and HTTP code.
+// The error message should be plain text.
+extern int srs_go_http_error(ISrsHttpResponseWriter* w, int code);
+extern int srs_go_http_error(ISrsHttpResponseWriter* w, int code, std::string error);
 
 // get the status text of code.
 extern std::string srs_generate_http_status_text(int status);
@@ -487,7 +491,16 @@ public:
     virtual std::string url() = 0;
     virtual std::string host() = 0;
     virtual std::string path() = 0;
+    virtual std::string query() = 0;
     virtual std::string ext() = 0;
+    /**
+     * get the RESTful id,
+     * for example, pattern is /api/v1/streams, path is /api/v1/streams/100,
+     * then the rest id is 100.
+     * @param pattern the handler pattern which will serve the request.
+     * @return the REST id; -1 if not matched.
+     */
+    virtual int parse_rest_id(std::string pattern) = 0;
 public:
     /**
      * read body to string.
@@ -516,6 +529,15 @@ public:
     virtual int request_header_count() = 0;
     virtual std::string request_header_key_at(int index) = 0;
     virtual std::string request_header_value_at(int index) = 0;
+public:
+    /**
+     * whether the current request is JSONP,
+     * which has a "callback=xxx" in QueryString.
+     */
+    virtual bool is_jsonp() = 0;
 };
 
 #endif
+
+#endif
+

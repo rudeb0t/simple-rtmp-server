@@ -40,7 +40,7 @@ using namespace std;
 #include <srs_kernel_file.hpp>
 #include <srs_rtmp_amf0.hpp>
 #include <srs_kernel_stream.hpp>
-#include <srs_app_json.hpp>
+#include <srs_protocol_json.hpp>
 #include <srs_app_utility.hpp>
 
 // update the flv duration and filesize every this interval in ms.
@@ -240,7 +240,7 @@ int SrsFlvSegment::write_metadata(SrsSharedPtrMessage* metadata)
     
     int size = name->total_size() + obj->total_size();
     char* payload = new char[size];
-    SrsAutoFree(char, payload);
+    SrsAutoFreeA(char, payload);
 
     // 11B flv header, 3B object EOF, 8B number value, 1B number flag.
     duration_offset = fs->tellg() + size + 11 - SrsAmf0Size::object_eof() - SrsAmf0Size::number();
@@ -355,7 +355,7 @@ int SrsFlvSegment::update_flv_metadata()
 
     // buffer to write the size.
     char* buf = new char[SrsAmf0Size::number()];
-    SrsAutoFree(char, buf);
+    SrsAutoFreeA(char, buf);
 
     SrsStream stream;
     if ((ret = stream.initialize(buf, SrsAmf0Size::number())) != ERROR_SUCCESS) {
@@ -496,8 +496,9 @@ int SrsFlvSegment::on_reload_vhost_dvr(std::string /*vhost*/)
     return ret;
 }
 
-SrsDvrAsyncCallOnDvr::SrsDvrAsyncCallOnDvr(SrsRequest* r, string p)
+SrsDvrAsyncCallOnDvr::SrsDvrAsyncCallOnDvr(int c, SrsRequest* r, string p)
 {
+    cid = c;
     req = r->copy();
     path = p;
 }
@@ -512,22 +513,31 @@ int SrsDvrAsyncCallOnDvr::call()
     int ret = ERROR_SUCCESS;
     
 #ifdef SRS_AUTO_HTTP_CALLBACK
-    // http callback for on_dvr in config.
-    if (_srs_config->get_vhost_http_hooks_enabled(req->vhost)) {
-        // HTTP: on_dvr 
-        SrsConfDirective* on_dvr = _srs_config->get_vhost_on_dvr(req->vhost);
-        if (!on_dvr) {
+    if (!_srs_config->get_vhost_http_hooks_enabled(req->vhost)) {
+        return ret;
+    }
+    
+    // the http hooks will cause context switch,
+    // so we must copy all hooks for the on_connect may freed.
+    // @see https://github.com/simple-rtmp-server/srs/issues/475
+    vector<string> hooks;
+    
+    if (true) {
+        SrsConfDirective* conf = _srs_config->get_vhost_on_dvr(req->vhost);
+        
+        if (!conf) {
             srs_info("ignore the empty http callback: on_dvr");
             return ret;
         }
         
-        std::string file = path;
-        for (int i = 0; i < (int)on_dvr->args.size(); i++) {
-            std::string url = on_dvr->args.at(i);
-            if ((ret = SrsHttpHooks::on_dvr(url, req, file)) != ERROR_SUCCESS) {
-                srs_error("hook client on_dvr failed. url=%s, ret=%d", url.c_str(), ret);
-                return ret;
-            }
+        hooks = conf->args;
+    }
+    
+    for (int i = 0; i < (int)hooks.size(); i++) {
+        std::string url = hooks.at(i);
+        if ((ret = SrsHttpHooks::on_dvr(cid, url, req, path)) != ERROR_SUCCESS) {
+            srs_error("hook client on_dvr failed. url=%s, ret=%d", url.c_str(), ret);
+            return ret;
         }
     }
 #endif
@@ -629,7 +639,8 @@ int SrsDvrPlan::on_reap_segment()
 {
     int ret = ERROR_SUCCESS;
 
-    if ((ret = async->execute(new SrsDvrAsyncCallOnDvr(req, segment->get_path()))) != ERROR_SUCCESS) {
+    int cid = _srs_context->get_id();
+    if ((ret = async->execute(new SrsDvrAsyncCallOnDvr(cid, req, segment->get_path()))) != ERROR_SUCCESS) {
         return ret;
     }
 

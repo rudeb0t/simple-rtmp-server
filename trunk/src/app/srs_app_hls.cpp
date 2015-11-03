@@ -177,9 +177,10 @@ void SrsHlsSegment::update_duration(int64_t current_frame_dts)
     return;
 }
 
-SrsDvrAsyncCallOnHls::SrsDvrAsyncCallOnHls(SrsRequest* r, string p, string t, string m, string mu, int s, double d)
+SrsDvrAsyncCallOnHls::SrsDvrAsyncCallOnHls(int c, SrsRequest* r, string p, string t, string m, string mu, int s, double d)
 {
     req = r->copy();
+    cid = c;
     path = p;
     ts_url = t;
     m3u8 = m;
@@ -198,23 +199,31 @@ int SrsDvrAsyncCallOnHls::call()
     int ret = ERROR_SUCCESS;
     
 #ifdef SRS_AUTO_HTTP_CALLBACK
-    // http callback for on_hls in config.
-    if (_srs_config->get_vhost_http_hooks_enabled(req->vhost)) {
-        // HTTP: on_hls
-        SrsConfDirective* on_hls = _srs_config->get_vhost_on_hls(req->vhost);
-        if (!on_hls) {
+    if (!_srs_config->get_vhost_http_hooks_enabled(req->vhost)) {
+        return ret;
+    }
+    
+    // the http hooks will cause context switch,
+    // so we must copy all hooks for the on_connect may freed.
+    // @see https://github.com/simple-rtmp-server/srs/issues/475
+    vector<string> hooks;
+    
+    if (true) {
+        SrsConfDirective* conf = _srs_config->get_vhost_on_hls(req->vhost);
+        
+        if (!conf) {
             srs_info("ignore the empty http callback: on_hls");
             return ret;
         }
         
-        std::string file = path;
-        int sn = seq_no;
-        for (int i = 0; i < (int)on_hls->args.size(); i++) {
-            std::string url = on_hls->args.at(i);
-            if ((ret = SrsHttpHooks::on_hls(url, req, file, ts_url, m3u8, m3u8_url, sn, duration)) != ERROR_SUCCESS) {
-                srs_error("hook client on_hls failed. url=%s, ret=%d", url.c_str(), ret);
-                return ret;
-            }
+        hooks = conf->args;
+    }
+    
+    for (int i = 0; i < (int)hooks.size(); i++) {
+        std::string url = hooks.at(i);
+        if ((ret = SrsHttpHooks::on_hls(cid, url, req, path, ts_url, m3u8, m3u8_url, seq_no, duration)) != ERROR_SUCCESS) {
+            srs_error("hook client on_hls failed. url=%s, ret=%d", url.c_str(), ret);
+            return ret;
         }
     }
 #endif
@@ -227,8 +236,9 @@ string SrsDvrAsyncCallOnHls::to_string()
     return "on_hls: " + path;
 }
 
-SrsDvrAsyncCallOnHlsNotify::SrsDvrAsyncCallOnHlsNotify(SrsRequest* r, string u)
+SrsDvrAsyncCallOnHlsNotify::SrsDvrAsyncCallOnHlsNotify(int c, SrsRequest* r, string u)
 {
+    cid = c;
     req = r->copy();
     ts_url = u;
 }
@@ -243,25 +253,31 @@ int SrsDvrAsyncCallOnHlsNotify::call()
     int ret = ERROR_SUCCESS;
     
 #ifdef SRS_AUTO_HTTP_CALLBACK
-    // http callback for on_hls_notify in config.
-    if (_srs_config->get_vhost_http_hooks_enabled(req->vhost)) {
-        // HTTP: on_hls
-        SrsConfDirective* on_hls = _srs_config->get_vhost_on_hls_notify(req->vhost);
-        if (!on_hls) {
+    if (!_srs_config->get_vhost_http_hooks_enabled(req->vhost)) {
+        return ret;
+    }
+    
+    // the http hooks will cause context switch,
+    // so we must copy all hooks for the on_connect may freed.
+    // @see https://github.com/simple-rtmp-server/srs/issues/475
+    vector<string> hooks;
+    
+    if (true) {
+        SrsConfDirective* conf = _srs_config->get_vhost_on_hls_notify(req->vhost);
+        
+        if (!conf) {
             srs_info("ignore the empty http callback: on_hls_notify");
             return ret;
         }
         
-        std::string url;
-        if (true) {
-            static u_int32_t nb_call = 0;
-            int index = nb_call++ % on_hls->args.size();
-            url = on_hls->args.at(index);
-        }
-        
-        int nb_notify = _srs_config->get_vhost_hls_nb_notify(req->vhost);
-        if ((ret = SrsHttpHooks::on_hls_notify(url, req, ts_url, nb_notify)) != ERROR_SUCCESS) {
-            srs_error("hook client on_hls_notify failed. url=%s, ts=%s, ret=%d", url.c_str(), ts_url.c_str(), ret);
+        hooks = conf->args;
+    }
+    
+    int nb_notify = _srs_config->get_vhost_hls_nb_notify(req->vhost);
+    for (int i = 0; i < (int)hooks.size(); i++) {
+        std::string url = hooks.at(i);
+        if ((ret = SrsHttpHooks::on_hls_notify(cid, url, req, ts_url, nb_notify)) != ERROR_SUCCESS) {
+            srs_error("hook client on_hls_notify failed. url=%s, ret=%d", url.c_str(), ret);
             return ret;
         }
     }
@@ -562,6 +578,7 @@ int SrsHlsMuxer::segment_open(int64_t segment_start_dts)
         current->full_path.c_str(), tmp_file.c_str());
 
     // set the segment muxer audio codec.
+    // TODO: FIXME: refine code, use event instead.
     if (acodec != SrsCodecAudioReserved1) {
         current->muxer->update_acodec(acodec);
     }
@@ -628,6 +645,11 @@ int SrsHlsMuxer::update_acodec(SrsCodecAudio ac)
     srs_assert(current->muxer);
     acodec = ac;
     return current->muxer->update_acodec(ac);
+}
+
+bool SrsHlsMuxer::pure_audio()
+{
+    return current && current->muxer && current->muxer->video_codec() == SrsCodecVideoDisabled;
 }
 
 int SrsHlsMuxer::flush_audio(SrsTsCache* cache)
@@ -706,11 +728,13 @@ int SrsHlsMuxer::segment_close(string log_desc)
     // valid, add to segments if segment duration is ok
     // when too small, it maybe not enough data to play.
     // when too large, it maybe timestamp corrupt.
-    if (current->duration * 1000 >= SRS_AUTO_HLS_SEGMENT_MIN_DURATION_MS && (int)current->duration <= max_td) {
+    // make the segment more acceptable, when in [min, max_td * 2], it's ok.
+    if (current->duration * 1000 >= SRS_AUTO_HLS_SEGMENT_MIN_DURATION_MS && (int)current->duration <= max_td * 2) {
         segments.push_back(current);
         
         // use async to call the http hooks, for it will cause thread switch.
-        if ((ret = async->execute(new SrsDvrAsyncCallOnHls(req,
+        if ((ret = async->execute(new SrsDvrAsyncCallOnHls(
+            _srs_context->get_id(), req,
             current->full_path, current->uri, m3u8, m3u8_url,
             current->sequence_no, current->duration))) != ERROR_SUCCESS)
         {
@@ -718,7 +742,7 @@ int SrsHlsMuxer::segment_close(string log_desc)
         }
         
         // use async to call the http hooks, for it will cause thread switch.
-        if ((ret = async->execute(new SrsDvrAsyncCallOnHlsNotify(req, current->uri))) != ERROR_SUCCESS) {
+        if ((ret = async->execute(new SrsDvrAsyncCallOnHlsNotify(_srs_context->get_id(), req, current->uri))) != ERROR_SUCCESS) {
             return ret;
         }
     
@@ -1022,7 +1046,7 @@ int SrsHlsCache::on_sequence_header(SrsHlsMuxer* muxer)
     // when the sequence header changed, the stream is not republish.
     return muxer->on_sequence_header();
 }
-    
+
 int SrsHlsCache::write_audio(SrsAvcAacCodec* codec, SrsHlsMuxer* muxer, int64_t pts, SrsCodecSample* sample)
 {
     int ret = ERROR_SUCCESS;
@@ -1030,25 +1054,6 @@ int SrsHlsCache::write_audio(SrsAvcAacCodec* codec, SrsHlsMuxer* muxer, int64_t 
     // write audio to cache.
     if ((ret = cache->cache_audio(codec, pts, sample)) != ERROR_SUCCESS) {
         return ret;
-    }
-    
-    // flush if buffer exceed max size.
-    if (cache->audio->payload->length() > SRS_AUTO_HLS_AUDIO_CACHE_SIZE) {
-        if ((ret = muxer->flush_audio(cache)) != ERROR_SUCCESS) {
-            return ret;
-        }
-    }
-
-    // TODO: config it.
-    // in ms, audio delay to flush the audios.
-    int64_t audio_delay = SRS_CONF_DEFAULT_AAC_DELAY;
-    // flush if audio delay exceed
-    // cache->audio will be free in flush_audio
-    // so we must check whether it's null ptr.
-    if (cache->audio && pts - cache->audio->start_pts > audio_delay * 90) {
-        if ((ret = muxer->flush_audio(cache)) != ERROR_SUCCESS) {
-            return ret;
-        }
     }
     
     // reap when current source is pure audio.
@@ -1064,6 +1069,21 @@ int SrsHlsCache::write_audio(SrsAvcAacCodec* codec, SrsHlsMuxer* muxer, int64_t 
         if ((ret = reap_segment("audio", muxer, cache->audio->pts)) != ERROR_SUCCESS) {
             return ret;
         }
+    }
+    
+    // for pure audio, aggregate some frame to one.
+    if (muxer->pure_audio() && cache->audio) {
+        if (pts - cache->audio->start_pts < SRS_CONSTS_HLS_PURE_AUDIO_AGGREGATE) {
+            return ret;
+        }
+    }
+    
+    // directly write the audio frame by frame to ts,
+    // it's ok for the hls overload, or maybe cause the audio corrupt,
+    // which introduced by aggregate the audios to a big one.
+    // @see https://github.com/simple-rtmp-server/srs/issues/512
+    if ((ret = muxer->flush_audio(cache)) != ERROR_SUCCESS) {
+        return ret;
     }
     
     return ret;
@@ -1083,7 +1103,7 @@ int SrsHlsCache::write_video(SrsAvcAacCodec* codec, SrsHlsMuxer* muxer, int64_t 
         // do reap ts if any of:
         //      a. wait keyframe and got keyframe.
         //      b. always reap when not wait keyframe.
-        if (!muxer->wait_keyframe()|| sample->frame_type == SrsCodecVideoAVCFrameKeyFrame) {
+        if (!muxer->wait_keyframe() || sample->frame_type == SrsCodecVideoAVCFrameKeyFrame) {
             // when wait keyframe, there must exists idr frame in sample.
             if (!sample->has_idr && muxer->wait_keyframe()) {
                 srs_warn("hls: ts starts without IDR, first nalu=%d, idr=%d", sample->first_nalu_type, sample->has_idr);
@@ -1093,9 +1113,6 @@ int SrsHlsCache::write_video(SrsAvcAacCodec* codec, SrsHlsMuxer* muxer, int64_t 
             if ((ret = reap_segment("video", muxer, cache->video->dts)) != ERROR_SUCCESS) {
                 return ret;
             }
-            
-            // the video must be flushed, just return.
-            return ret;
         }
     }
     
@@ -1235,7 +1252,7 @@ int SrsHls::initialize(SrsSource* s, ISrsHlsHandler* h)
     return ret;
 }
 
-int SrsHls::on_publish(SrsRequest* req)
+int SrsHls::on_publish(SrsRequest* req, bool fetch_sequence_header)
 {
     int ret = ERROR_SUCCESS;
     
@@ -1265,12 +1282,16 @@ int SrsHls::on_publish(SrsRequest* req)
     // ok, the hls can be dispose, or need to be dispose.
     hls_can_dispose = true;
     
-    // notice the source to get the cached sequence header.
-    // when reload to start hls, hls will never get the sequence header in stream,
-    // use the SrsSource.on_hls_start to push the sequence header to HLS.
-    if ((ret = source->on_hls_start()) != ERROR_SUCCESS) {
-        srs_error("callback source hls start failed. ret=%d", ret);
-        return ret;
+    // when publish, don't need to fetch sequence header, which is old and maybe corrupt.
+    // when reload, we must fetch the sequence header from source cache.
+    if (fetch_sequence_header) {
+        // notice the source to get the cached sequence header.
+        // when reload to start hls, hls will never get the sequence header in stream,
+        // use the SrsSource.on_hls_start to push the sequence header to HLS.
+        if ((ret = source->on_hls_start()) != ERROR_SUCCESS) {
+            srs_error("callback source hls start failed. ret=%d", ret);
+            return ret;
+        }
     }
 
     return ret;
@@ -1374,7 +1395,7 @@ int SrsHls::on_audio(SrsSharedPtrMessage* shared_audio)
     return ret;
 }
 
-int SrsHls::on_video(SrsSharedPtrMessage* shared_video)
+int SrsHls::on_video(SrsSharedPtrMessage* shared_video, bool is_sps_pps)
 {
     int ret = ERROR_SUCCESS;
     
@@ -1387,6 +1408,12 @@ int SrsHls::on_video(SrsSharedPtrMessage* shared_video)
 
     SrsSharedPtrMessage* video = shared_video->copy();
     SrsAutoFree(SrsSharedPtrMessage, video);
+    
+    // user can disable the sps parse to workaround when parse sps failed.
+    // @see https://github.com/simple-rtmp-server/srs/issues/474
+    if (is_sps_pps) {
+        codec->avc_parse_sps = _srs_config->get_parse_sps(_req->vhost);
+    }
     
     sample->clear();
     if ((ret = codec->video_avc_demux(video->payload, video->size, sample)) != ERROR_SUCCESS) {

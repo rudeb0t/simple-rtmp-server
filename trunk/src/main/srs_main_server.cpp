@@ -162,7 +162,7 @@ void show_macro_features()
 #endif
 
 #ifdef SRS_PERF_TCP_NODELAY
-    srs_warn("TCP_NODELAY enabled, hurts performance.");
+    srs_warn("TCP_NODELAY enabled, may hurts performance.");
 #else
     srs_trace("TCP_NODELAY disabled.");
 #endif
@@ -225,6 +225,21 @@ void check_macro_features()
 #if defined(SRS_PERF_SO_SNDBUF_SIZE) && !defined(SRS_PERF_MW_SO_SNDBUF)
     #error "SRS_PERF_SO_SNDBUF_SIZE depends on SRS_PERF_MW_SO_SNDBUF"
 #endif
+    
+#ifndef SRS_OSX
+    #if defined(__amd64__)
+        srs_trace("cpu is amd64, glibc %d.%d", (int)__GLIBC__, (int)__GLIBC_MINOR__);
+    #endif
+    #if defined(__x86_64__)
+        srs_trace("cpu is x86_64, glibc %d.%d", (int)__GLIBC__, (int)__GLIBC_MINOR__);
+    #endif
+    #if defined(__i386__)
+        srs_trace("cpu is i386, glibc %d.%d", (int)__GLIBC__, (int)__GLIBC_MINOR__);
+    #endif
+    #if defined(__arm__)
+        srs_trace("cpu is arm, glibc %d.%d", (int)__GLIBC__, (int)__GLIBC_MINOR__);
+    #endif
+#endif
 }
 
 /**
@@ -276,8 +291,8 @@ int main(int argc, char** argv)
     }
     
     srs_trace("srs(simple-rtmp-server) "RTMP_SIG_SRS_VERSION);
-    srs_trace("license: "RTMP_SIG_SRS_LICENSE);
-    srs_trace("primary: "RTMP_SIG_SRS_PRIMARY);
+    srs_trace("license: "RTMP_SIG_SRS_LICENSE", "RTMP_SIG_SRS_COPYRIGHT);
+    srs_trace("primary/master: "RTMP_SIG_SRS_PRIMARY);
     srs_trace("authors: "RTMP_SIG_SRS_AUTHROS);
     srs_trace("contributors: "SRS_AUTO_CONSTRIBUTORS);
     srs_trace("uname: "SRS_AUTO_UNAME);
