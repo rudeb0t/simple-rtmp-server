@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 SRS(simple-rtmp-server)
+Copyright (c) 2013-2015 SRS(ossrs)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -31,7 +31,7 @@ using namespace std;
 #include <srs_kernel_error.hpp>
 #include <srs_rtmp_stack.hpp>
 #include <srs_app_st.hpp>
-#include <srs_app_json.hpp>
+#include <srs_protocol_json.hpp>
 #include <srs_app_dvr.hpp>
 #include <srs_app_http_client.hpp>
 #include <srs_core_autofree.hpp>
@@ -257,11 +257,11 @@ void SrsHttpHooks::on_stop(string url, SrsRequest* req)
     return;
 }
 
-int SrsHttpHooks::on_dvr(string url, SrsRequest* req, string file)
+int SrsHttpHooks::on_dvr(int cid, string url, SrsRequest* req, string file)
 {
     int ret = ERROR_SUCCESS;
     
-    int client_id = _srs_context->get_id();
+    int client_id = cid;
     std::string cwd = _srs_config->cwd();
     
     std::stringstream ss;
@@ -293,11 +293,11 @@ int SrsHttpHooks::on_dvr(string url, SrsRequest* req, string file)
     return ret;
 }
 
-int SrsHttpHooks::on_hls(string url, SrsRequest* req, string file, string ts_url, string m3u8, string m3u8_url, int sn, double duration)
+int SrsHttpHooks::on_hls(int cid, string url, SrsRequest* req, string file, string ts_url, string m3u8, string m3u8_url, int sn, double duration)
 {
     int ret = ERROR_SUCCESS;
     
-    int client_id = _srs_context->get_id();
+    int client_id = cid;
     std::string cwd = _srs_config->cwd();
     
     std::stringstream ss;
@@ -334,11 +334,11 @@ int SrsHttpHooks::on_hls(string url, SrsRequest* req, string file, string ts_url
     return ret;
 }
 
-int SrsHttpHooks::on_hls_notify(std::string url, SrsRequest* req, std::string ts_url, int nb_notify)
+int SrsHttpHooks::on_hls_notify(int cid, std::string url, SrsRequest* req, std::string ts_url, int nb_notify)
 {
     int ret = ERROR_SUCCESS;
     
-    int client_id = _srs_context->get_id();
+    int client_id = cid;
     std::string cwd = _srs_config->cwd();
     
     if (srs_string_starts_with(ts_url, "http://") || srs_string_starts_with(ts_url, "https://")) {
@@ -380,7 +380,7 @@ int SrsHttpHooks::on_hls_notify(std::string url, SrsRequest* req, std::string ts
     
     int nb_buf = srs_min(nb_notify, SRS_HTTP_READ_BUFFER);
     char* buf = new char[nb_buf];
-    SrsAutoFree(char, buf);
+    SrsAutoFreeA(char, buf);
     
     int nb_read = 0;
     ISrsHttpResponseReader* br = msg->body_reader();
@@ -429,39 +429,51 @@ int SrsHttpHooks::do_post(std::string url, std::string req, int& code, string& r
     }
     
     // ensure the http status is ok.
-    // https://github.com/simple-rtmp-server/srs/issues/158
+    // https://github.com/ossrs/srs/issues/158
     if (code != SRS_CONSTS_HTTP_OK) {
-        return ERROR_HTTP_STATUS_INVLIAD;
+        ret = ERROR_HTTP_STATUS_INVALID;
+        srs_error("invalid response status=%d. ret=%d", code, ret);
+        return ret;
     }
     
+    // should never be empty.
     if (res.empty()) {
-        return ERROR_HTTP_DATA_INVLIAD;
+        ret = ERROR_HTTP_DATA_INVALID;
+        srs_error("invalid empty response. ret=%d", ret);
+        return ret;
     }
     
     // parse string res to json.
     SrsJsonAny* info = SrsJsonAny::loads((char*)res.c_str());
+    if (!info) {
+        ret = ERROR_HTTP_DATA_INVALID;
+        srs_error("invalid response %s. ret=%d", res.c_str(), ret);
+        return ret;
+    }
     SrsAutoFree(SrsJsonAny, info);
     
-    // if res is number of error code
+    // response error code in string.
     if (!info->is_object()) {
         if (res != SRS_HTTP_RESPONSE_OK) {
-            return ERROR_HTTP_DATA_INVLIAD;
+            ret = ERROR_HTTP_DATA_INVALID;
+            srs_error("invalid response number %s. ret=%d", res.c_str(), ret);
+            return ret;
         }
         return ret;
     }
     
-    // if res is json obj, like: {"code": 0, "data": ""}
+    // response standard object, format in json: {"code": 0, "data": ""}
     SrsJsonObject* res_info = info->to_object();
     SrsJsonAny* res_code = NULL;
     if ((res_code = res_info->ensure_property_integer("code")) == NULL) {
         ret = ERROR_RESPONSE_CODE;
-        srs_error("res code error, ret=%d", ret);
+        srs_error("invalid response without code, ret=%d", ret);
         return ret;
     }
 
     if ((res_code->to_integer()) != ERROR_SUCCESS) {
         ret = ERROR_RESPONSE_CODE;
-        srs_error("res code error, ret=%d, code=%d", ret, code);
+        srs_error("error response code=%d. ret=%d", res_code->to_integer(), ret);
         return ret;
     }
 

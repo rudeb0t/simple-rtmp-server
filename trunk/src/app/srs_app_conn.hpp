@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 SRS(simple-rtmp-server)
+Copyright (c) 2013-2015 SRS(ossrs)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -88,6 +88,11 @@ protected:
      * when disposed, connection should stop cycle and cleanup itself.
      */
     bool disposed;
+    /**
+     * whether connection is expired, application definition.
+     * when expired, the connection must never be served and quit ASAP.
+     */
+    bool expired;
 public:
     SrsConnection(IConnectionManager* cm, st_netfd_t c);
     virtual ~SrsConnection();
@@ -125,6 +130,10 @@ public:
     * get the srs id which identify the client.
     */
     virtual int srs_id();
+    /**
+     * set connection to expired.
+     */
+    virtual void expire();
 protected:
     /**
     * for concrete connection to do the cycle.

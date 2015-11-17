@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 SRS(simple-rtmp-server)
+Copyright (c) 2013-2015 SRS(ossrs)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -32,7 +32,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <srs_rtmp_utility.hpp>
 #include <srs_rtmp_handshake.hpp>
 
-// for srs-librtmp, @see https://github.com/simple-rtmp-server/srs/issues/213
+// for srs-librtmp, @see https://github.com/ossrs/srs/issues/213
 #ifndef _WIN32
 #include <unistd.h>
 #endif
@@ -151,14 +151,14 @@ int SrsPacket::encode(int& psize, char*& ppayload)
         
         if ((ret = stream.initialize(payload, size)) != ERROR_SUCCESS) {
             srs_error("initialize the stream failed. ret=%d", ret);
-            srs_freep(payload);
+            srs_freepa(payload);
             return ret;
         }
     }
     
     if ((ret = encode_packet(&stream)) != ERROR_SUCCESS) {
         srs_error("encode the packet failed. ret=%d", ret);
-        srs_freep(payload);
+        srs_freepa(payload);
         return ret;
     }
     
@@ -279,7 +279,7 @@ SrsProtocol::~SrsProtocol()
         SrsChunkStream* cs = cs_cache[i];
         srs_freep(cs);
     }
-    srs_freep(cs_cache);
+    srs_freepa(cs_cache);
 }
 
 void SrsProtocol::set_auto_response(bool v)
@@ -632,7 +632,7 @@ int SrsProtocol::do_send_and_free_packet(SrsPacket* packet, int stream_id)
     header.perfer_cid = packet->get_prefer_cid();
     
     ret = do_simple_send(&header, payload, size);
-    srs_freep(payload);
+    srs_freepa(payload);
     if (ret == ERROR_SUCCESS) {
         ret = on_send_packet(&header, packet);
     }
@@ -937,7 +937,7 @@ int SrsProtocol::recv_interlaced_message(SrsCommonMessage** pmsg)
     SrsChunkStream* chunk = NULL;
     
     // use chunk stream cache to get the chunk info.
-    // @see https://github.com/simple-rtmp-server/srs/issues/249
+    // @see https://github.com/ossrs/srs/issues/249
     if (cid < SRS_PERF_CHUNK_STREAM_CACHE) {
         // chunk stream cache hit.
         srs_verbose("cs-cache hit, cid=%d", cid);
@@ -1148,7 +1148,7 @@ int SrsProtocol::read_message_header(SrsChunkStream* chunk, char fmt)
         // 0x04             where: message_type=4(protocol control user-control message)
         // 0x00 0x06            where: event Ping(0x06)
         // 0x00 0x00 0x0d 0x0f  where: event data 4bytes ping timestamp.
-        // @see: https://github.com/simple-rtmp-server/srs/issues/98
+        // @see: https://github.com/ossrs/srs/issues/98
         if (chunk->cid == RTMP_CID_ProtocolControl && fmt == RTMP_FMT_TYPE1) {
             srs_warn("accept cid=2, fmt=1 to make librtmp happy.");
         } else {
@@ -1318,7 +1318,7 @@ int SrsProtocol::read_message_header(SrsChunkStream* chunk, char fmt)
         pp[0] = *p++;
 
         // always use 31bits timestamp, for some server may use 32bits extended timestamp.
-        // @see https://github.com/simple-rtmp-server/srs/issues/111
+        // @see https://github.com/ossrs/srs/issues/111
         timestamp &= 0x7fffffff;
         
         /**
@@ -1508,12 +1508,12 @@ int SrsProtocol::on_recv_message(SrsCommonMessage* msg)
 
             // for some server, the actual chunk size can greater than the max value(65536),
             // so we just warning the invalid chunk size, and actually use it is ok,
-            // @see: https://github.com/simple-rtmp-server/srs/issues/160
+            // @see: https://github.com/ossrs/srs/issues/160
             if (pkt->chunk_size < SRS_CONSTS_RTMP_MIN_CHUNK_SIZE 
                 || pkt->chunk_size > SRS_CONSTS_RTMP_MAX_CHUNK_SIZE) 
             {
                 srs_warn("accept chunk size %d, but should in [%d, %d], "
-                    "@see: https://github.com/simple-rtmp-server/srs/issues/160",
+                    "@see: https://github.com/ossrs/srs/issues/160",
                     pkt->chunk_size, SRS_CONSTS_RTMP_MIN_CHUNK_SIZE, 
                     SRS_CONSTS_RTMP_MAX_CHUNK_SIZE);
             }
@@ -1747,10 +1747,15 @@ string srs_client_type_string(SrsRtmpConnType type)
 {
     switch (type) {
         case SrsRtmpConnPlay: return "Play";
-        case SrsRtmpConnFlashPublish: return "publish(FlashPublish)";
-        case SrsRtmpConnFMLEPublish: return "publish(FMLEPublish)";
+        case SrsRtmpConnFlashPublish: return "flash-publish)";
+        case SrsRtmpConnFMLEPublish: return "fmle-publish";
         default: return "Unknown";
     }
+}
+
+bool srs_client_type_is_publish(SrsRtmpConnType type)
+{
+    return type != SrsRtmpConnPlay;
 }
 
 SrsHandshakeBytes::SrsHandshakeBytes()
@@ -1760,9 +1765,9 @@ SrsHandshakeBytes::SrsHandshakeBytes()
 
 SrsHandshakeBytes::~SrsHandshakeBytes()
 {
-    srs_freep(c0c1);
-    srs_freep(s0s1s2);
-    srs_freep(c2);
+    srs_freepa(c0c1);
+    srs_freepa(s0s1s2);
+    srs_freepa(c2);
 }
 
 int SrsHandshakeBytes::read_c0c1(ISrsProtocolReaderWriter* io)
@@ -1872,7 +1877,7 @@ int SrsHandshakeBytes::create_s0s1s2(const char* c1)
     }
     
     // if c1 specified, copy c1 to s2.
-    // @see: https://github.com/simple-rtmp-server/srs/issues/46
+    // @see: https://github.com/ossrs/srs/issues/46
     if (c1) {
         memcpy(s0s1s2 + 1537, c1, 1536);
     }
@@ -2068,7 +2073,7 @@ int SrsRtmpClient::connect_app2(
         }
         pkt->command_object->set("objectEncoding", SrsAmf0Any::number(0));
         
-        // @see https://github.com/simple-rtmp-server/srs/issues/160
+        // @see https://github.com/ossrs/srs/issues/160
         // the debug_srs_upnode is config in vhost and default to true.
         if (debug_srs_upnode && req && req->args) {
             srs_freep(pkt->args);
@@ -2625,7 +2630,7 @@ int SrsRtmpServer::identify_client(int stream_id, SrsRtmpConnType& type, string&
         }
         // call msg,
         // support response null first,
-        // @see https://github.com/simple-rtmp-server/srs/issues/106
+        // @see https://github.com/ossrs/srs/issues/106
         // TODO: FIXME: response in right way, or forward in edge mode.
         SrsCallPacket* call = dynamic_cast<SrsCallPacket*>(pkt);
         if (call) {
@@ -2633,7 +2638,9 @@ int SrsRtmpServer::identify_client(int stream_id, SrsRtmpConnType& type, string&
             res->command_object = SrsAmf0Any::null();
             res->response = SrsAmf0Any::null();
             if ((ret = protocol->send_and_free_packet(res, 0)) != ERROR_SUCCESS) {
-                srs_warn("response call failed. ret=%d", ret);
+                if (!srs_is_system_control_error(ret) && !srs_is_client_gracefully_close(ret)) {
+                    srs_warn("response call failed. ret=%d", ret);
+                }
                 return ret;
             }
             continue;
@@ -2715,7 +2722,7 @@ int SrsRtmpServer::start_play(int stream_id)
         SrsSampleAccessPacket* pkt = new SrsSampleAccessPacket();
 
         // allow audio/video sample.
-        // @see: https://github.com/simple-rtmp-server/srs/issues/49
+        // @see: https://github.com/ossrs/srs/issues/49
         pkt->audio_sample_access = true;
         pkt->video_sample_access = true;
         
@@ -2924,7 +2931,9 @@ int SrsRtmpServer::fmle_unpublish(int stream_id, double unpublish_tid)
         pkt->data->set(StatusDescription, SrsAmf0Any::str("Stop publishing stream."));
         
         if ((ret = protocol->send_and_free_packet(pkt, stream_id)) != ERROR_SUCCESS) {
-            srs_error("send onFCUnpublish(NetStream.unpublish.Success) message failed. ret=%d", ret);
+            if (!srs_is_system_control_error(ret) && !srs_is_client_gracefully_close(ret)) {
+                srs_error("send onFCUnpublish(NetStream.unpublish.Success) message failed. ret=%d", ret);
+            }
             return ret;
         }
         srs_info("send onFCUnpublish(NetStream.unpublish.Success) message success.");
@@ -2933,7 +2942,9 @@ int SrsRtmpServer::fmle_unpublish(int stream_id, double unpublish_tid)
     if (true) {
         SrsFMLEStartResPacket* pkt = new SrsFMLEStartResPacket(unpublish_tid);
         if ((ret = protocol->send_and_free_packet(pkt, stream_id)) != ERROR_SUCCESS) {
-            srs_error("send FCUnpublish response message failed. ret=%d", ret);
+            if (!srs_is_system_control_error(ret) && !srs_is_client_gracefully_close(ret)) {
+                srs_error("send FCUnpublish response message failed. ret=%d", ret);
+            }
             return ret;
         }
         srs_info("send FCUnpublish response message success.");
@@ -2948,7 +2959,9 @@ int SrsRtmpServer::fmle_unpublish(int stream_id, double unpublish_tid)
         pkt->data->set(StatusClientId, SrsAmf0Any::str(RTMP_SIG_CLIENT_ID));
         
         if ((ret = protocol->send_and_free_packet(pkt, stream_id)) != ERROR_SUCCESS) {
-            srs_error("send onStatus(NetStream.Unpublish.Success) message failed. ret=%d", ret);
+            if (!srs_is_system_control_error(ret) && !srs_is_client_gracefully_close(ret)) {
+                srs_error("send onStatus(NetStream.Unpublish.Success) message failed. ret=%d", ret);
+            }
             return ret;
         }
         srs_info("send onStatus(NetStream.Unpublish.Success) message success.");
@@ -3140,7 +3153,7 @@ int SrsConnectAppPacket::decode(SrsStream* stream)
     if (!stream->empty()) {
         srs_freep(args);
         
-        // see: https://github.com/simple-rtmp-server/srs/issues/186
+        // see: https://github.com/ossrs/srs/issues/186
         // the args maybe any amf0, for instance, a string. we should drop if not object.
         SrsAmf0Any* any = NULL;
         if ((ret = SrsAmf0Any::discovery(stream, &any)) != ERROR_SUCCESS) {
@@ -4234,10 +4247,22 @@ int SrsPlayPacket::get_message_type()
 
 int SrsPlayPacket::get_size()
 {
-    return SrsAmf0Size::str(command_name) + SrsAmf0Size::number()
-        + SrsAmf0Size::null() + SrsAmf0Size::str(stream_name)
-        + SrsAmf0Size::number() + SrsAmf0Size::number()
-        + SrsAmf0Size::boolean();
+    int size = SrsAmf0Size::str(command_name) + SrsAmf0Size::number()
+        + SrsAmf0Size::null() + SrsAmf0Size::str(stream_name);
+    
+    if (start != -2 || duration != -1 || !reset) {
+        size += SrsAmf0Size::number();
+    }
+    
+    if (duration != -1 || !reset) {
+        size += SrsAmf0Size::number();
+    }
+    
+    if (!reset) {
+        size += SrsAmf0Size::boolean();
+    }
+    
+    return size;
 }
 
 int SrsPlayPacket::encode_packet(SrsStream* stream)
@@ -4268,19 +4293,19 @@ int SrsPlayPacket::encode_packet(SrsStream* stream)
     }
     srs_verbose("encode stream_name success.");
     
-    if ((ret = srs_amf0_write_number(stream, start)) != ERROR_SUCCESS) {
+    if ((start != -2 || duration != -1 || !reset) && (ret = srs_amf0_write_number(stream, start)) != ERROR_SUCCESS) {
         srs_error("encode start failed. ret=%d", ret);
         return ret;
     }
     srs_verbose("encode start success.");
     
-    if ((ret = srs_amf0_write_number(stream, duration)) != ERROR_SUCCESS) {
+    if ((duration != -1 || !reset) && (ret = srs_amf0_write_number(stream, duration)) != ERROR_SUCCESS) {
         srs_error("encode duration failed. ret=%d", ret);
         return ret;
     }
     srs_verbose("encode duration success.");
     
-    if ((ret = srs_amf0_write_boolean(stream, reset)) != ERROR_SUCCESS) {
+    if (!reset && (ret = srs_amf0_write_boolean(stream, reset)) != ERROR_SUCCESS) {
         srs_error("encode reset failed. ret=%d", ret);
         return ret;
     }
@@ -5111,14 +5136,29 @@ int SrsUserControlPacket::decode(SrsStream* stream)
 {
     int ret = ERROR_SUCCESS;
     
-    if (!stream->require(6)) {
+    if (!stream->require(2)) {
         ret = ERROR_RTMP_MESSAGE_DECODE;
         srs_error("decode user control failed. ret=%d", ret);
         return ret;
     }
     
     event_type = stream->read_2bytes();
-    event_data = stream->read_4bytes();
+    
+    if (event_type == SrsPCUCFmsEvent0) {
+        if (!stream->require(1)) {
+            ret = ERROR_RTMP_MESSAGE_DECODE;
+            srs_error("decode user control failed. ret=%d", ret);
+            return ret;
+        }
+        event_data = stream->read_1bytes();
+    } else {
+        if (!stream->require(4)) {
+            ret = ERROR_RTMP_MESSAGE_DECODE;
+            srs_error("decode user control failed. ret=%d", ret);
+            return ret;
+        }
+        event_data = stream->read_4bytes();
+    }
     
     if (event_type == SrcPCUCSetBufferLength) {
         if (!stream->require(4)) {
@@ -5148,11 +5188,19 @@ int SrsUserControlPacket::get_message_type()
 
 int SrsUserControlPacket::get_size()
 {
-    if (event_type == SrcPCUCSetBufferLength) {
-        return 2 + 4 + 4;
+    int size = 2;
+    
+    if (event_type == SrsPCUCFmsEvent0) {
+        size += 1;
     } else {
-        return 2 + 4;
+        size += 4;
     }
+    
+    if (event_type == SrcPCUCSetBufferLength) {
+        size += 4;
+    }
+    
+    return size;
 }
 
 int SrsUserControlPacket::encode_packet(SrsStream* stream)
@@ -5166,7 +5214,12 @@ int SrsUserControlPacket::encode_packet(SrsStream* stream)
     }
     
     stream->write_2bytes(event_type);
-    stream->write_4bytes(event_data);
+    
+    if (event_type == SrsPCUCFmsEvent0) {
+        stream->write_1bytes(event_data);
+    } else {
+        stream->write_4bytes(event_data);
+    }
 
     // when event type is set buffer length,
     // write the extra buffer length.

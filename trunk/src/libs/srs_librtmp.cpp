@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 SRS(simple-rtmp-server)
+Copyright (c) 2013-2015 SRS(ossrs)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -25,7 +25,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include <stdlib.h>
 
-// for srs-librtmp, @see https://github.com/simple-rtmp-server/srs/issues/213
+// for srs-librtmp, @see https://github.com/ossrs/srs/issues/213
 #ifndef _WIN32
 #include <sys/time.h>
 #endif
@@ -86,20 +86,20 @@ struct Context
     SrsRawAacStream aac_raw;
 
     // for h264 raw stream, 
-    // @see: https://github.com/simple-rtmp-server/srs/issues/66#issuecomment-62240521
+    // @see: https://github.com/ossrs/srs/issues/66#issuecomment-62240521
     SrsStream h264_raw_stream;
     // about SPS, @see: 7.3.2.1.1, H.264-AVC-ISO_IEC_14496-10-2012.pdf, page 62
     std::string h264_sps;
     std::string h264_pps;
     // whether the sps and pps sent,
-    // @see https://github.com/simple-rtmp-server/srs/issues/203
+    // @see https://github.com/ossrs/srs/issues/203
     bool h264_sps_pps_sent;
     // only send the ssp and pps when both changed.
-    // @see https://github.com/simple-rtmp-server/srs/issues/204
+    // @see https://github.com/ossrs/srs/issues/204
     bool h264_sps_changed;
     bool h264_pps_changed;
     // for aac raw stream,
-    // @see: https://github.com/simple-rtmp-server/srs/issues/212#issuecomment-64146250
+    // @see: https://github.com/ossrs/srs/issues/212#issuecomment-64146250
     SrsStream aac_raw_stream;
     // the aac sequence header.
     std::string aac_specific_config;
@@ -127,7 +127,7 @@ struct Context
     }
 };
 
-// for srs-librtmp, @see https://github.com/simple-rtmp-server/srs/issues/213
+// for srs-librtmp, @see https://github.com/ossrs/srs/issues/213
 #ifdef _WIN32
     int gettimeofday(struct timeval* tv, struct timezone* tz)
     {  
@@ -1239,7 +1239,7 @@ int srs_write_h264_ipb_frame(Context* context,
     int ret = ERROR_SUCCESS;
     
     // when sps or pps not sent, ignore the packet.
-    // @see https://github.com/simple-rtmp-server/srs/issues/203
+    // @see https://github.com/ossrs/srs/issues/203
     if (!context->h264_sps_pps_sent) {
         return ERROR_H264_DROP_BEFORE_SPS_PPS;
     }
@@ -1279,8 +1279,8 @@ int srs_write_h264_sps_pps(Context* context, u_int32_t dts, u_int32_t pts)
 {
     int ret = ERROR_SUCCESS;
     
-    // only send when both sps and pps changed.
-    if (!context->h264_sps_changed || !context->h264_pps_changed) {
+    // send when sps or pps changed.
+    if (!context->h264_sps_changed && !context->h264_pps_changed) {
         return ret;
     }
     
@@ -1330,7 +1330,7 @@ int srs_write_h264_raw_frame(Context* context,
         context->h264_sps_changed = true;
         context->h264_sps = sps;
         
-        return srs_write_h264_sps_pps(context, dts, pts);
+        return ret;
     }
 
     // for pps
@@ -1346,7 +1346,12 @@ int srs_write_h264_raw_frame(Context* context,
         context->h264_pps_changed = true;
         context->h264_pps = pps;
         
-        return srs_write_h264_sps_pps(context, dts, pts);
+        return ret;
+    }
+    
+    // send pps+sps before ipb frames when sps/pps changed.
+    if ((ret = srs_write_h264_sps_pps(context, dts, pts)) != ERROR_SUCCESS) {
+        return ret;
     }
 
     // ibp frame.
@@ -1372,8 +1377,8 @@ int srs_h264_write_raw_frames(srs_rtmp_t rtmp,
     }
     
     // use the last error
-    // @see https://github.com/simple-rtmp-server/srs/issues/203
-    // @see https://github.com/simple-rtmp-server/srs/issues/204
+    // @see https://github.com/ossrs/srs/issues/203
+    // @see https://github.com/ossrs/srs/issues/204
     int error_code_return = ret;
     
     // send each frame.
@@ -1915,8 +1920,7 @@ void srs_amf0_strict_array_append(srs_amf0_t amf0, srs_amf0_t value)
 
 int64_t srs_utils_time_ms()
 {
-    srs_update_system_time_ms();
-    return srs_get_system_time_ms();
+    return srs_update_system_time_ms();
 }
 
 int64_t srs_utils_send_bytes(srs_rtmp_t rtmp)
@@ -2321,31 +2325,58 @@ int srs_human_print_rtmp_packet(char type, u_int32_t timestamp, char* data, int 
 
 int srs_human_print_rtmp_packet2(char type, u_int32_t timestamp, char* data, int size, u_int32_t pre_timestamp)
 {
+    return srs_human_print_rtmp_packet3(type, timestamp, data, size, pre_timestamp, 0);
+}
+    
+int srs_human_print_rtmp_packet3(char type, u_int32_t timestamp, char* data, int size, u_int32_t pre_timestamp, int64_t pre_now)
+{
+    return srs_human_print_rtmp_packet4(type, timestamp, data, size, pre_timestamp, pre_now, 0, 0);
+}
+    
+int srs_human_print_rtmp_packet4(char type, u_int32_t timestamp, char* data, int size, u_int32_t pre_timestamp, int64_t pre_now, int64_t starttime, int64_t nb_packets)
+{
     int ret = ERROR_SUCCESS;
+    
+    // packets interval in milliseconds.
+    double pi = 0;
+    if (pre_now > starttime) {
+        pi = (pre_now - starttime) / (double)nb_packets;
+    }
+    
+    // global fps(video and audio mixed fps).
+    double gfps = 0;
+    if (pi > 0) {
+        gfps = 1000 / pi;
+    }
     
     int diff = 0;
     if (pre_timestamp > 0) {
         diff = (int)timestamp - (int)pre_timestamp;
     }
     
+    int ndiff = 0;
+    if (pre_now > 0) {
+        ndiff = (int)(srs_utils_time_ms() - pre_now);
+    }
+    
     u_int32_t pts;
     if (srs_utils_parse_timestamp(timestamp, type, data, size, &pts) != 0) {
-        srs_human_trace("Rtmp packet type=%s, dts=%d, diff=%d, size=%d, DecodeError",
-            srs_human_flv_tag_type2string(type), timestamp, diff, size
+        srs_human_trace("Rtmp packet id=%"PRId64"/%.1f/%.1f, type=%s, dts=%d, ndiff=%d, diff=%d, size=%d, DecodeError",
+            nb_packets, pi, gfps, srs_human_flv_tag_type2string(type), timestamp, ndiff, diff, size
         );
         return ret;
     }
     
     if (type == SRS_RTMP_TYPE_VIDEO) {
-        srs_human_trace("Video packet type=%s, dts=%d, pts=%d, diff=%d, size=%d, %s(%s,%s)",
-            srs_human_flv_tag_type2string(type), timestamp, pts, diff, size,
+        srs_human_trace("Video packet id=%"PRId64"/%.1f/%.1f, type=%s, dts=%d, pts=%d, ndiff=%d, diff=%d, size=%d, %s(%s,%s)",
+            nb_packets, pi, gfps, srs_human_flv_tag_type2string(type), timestamp, pts, ndiff, diff, size,
             srs_human_flv_video_codec_id2string(srs_utils_flv_video_codec_id(data, size)),
             srs_human_flv_video_avc_packet_type2string(srs_utils_flv_video_avc_packet_type(data, size)),
             srs_human_flv_video_frame_type2string(srs_utils_flv_video_frame_type(data, size))
         );
     } else if (type == SRS_RTMP_TYPE_AUDIO) {
-        srs_human_trace("Audio packet type=%s, dts=%d, pts=%d, diff=%d, size=%d, %s(%s,%s,%s,%s)",
-            srs_human_flv_tag_type2string(type), timestamp, pts, diff, size,
+        srs_human_trace("Audio packet id=%"PRId64"/%.1f/%.1f, type=%s, dts=%d, pts=%d, ndiff=%d, diff=%d, size=%d, %s(%s,%s,%s,%s)",
+            nb_packets, pi, gfps, srs_human_flv_tag_type2string(type), timestamp, pts, ndiff, diff, size,
             srs_human_flv_audio_sound_format2string(srs_utils_flv_audio_sound_format(data, size)),
             srs_human_flv_audio_sound_rate2string(srs_utils_flv_audio_sound_rate(data, size)),
             srs_human_flv_audio_sound_size2string(srs_utils_flv_audio_sound_size(data, size)),
@@ -2353,8 +2384,8 @@ int srs_human_print_rtmp_packet2(char type, u_int32_t timestamp, char* data, int
             srs_human_flv_audio_aac_packet_type2string(srs_utils_flv_audio_aac_packet_type(data, size))
         );
     } else if (type == SRS_RTMP_TYPE_SCRIPT) {
-        srs_human_verbose("Data packet type=%s, time=%d, diff=%d, size=%d",
-        srs_human_flv_tag_type2string(type), timestamp, diff, size);
+        srs_human_verbose("Data packet id=%"PRId64"/%.1f/%.1f, type=%s, time=%d, ndiff=%d, diff=%d, size=%d",
+            nb_packets, pi, gfps, srs_human_flv_tag_type2string(type), timestamp, ndiff, diff, size);
         int nparsed = 0;
         while (nparsed < size) {
             int nb_parsed_this = 0;
@@ -2367,11 +2398,11 @@ int srs_human_print_rtmp_packet2(char type, u_int32_t timestamp, char* data, int
             
             char* amf0_str = NULL;
             srs_human_raw("%s", srs_human_amf0_print(amf0, &amf0_str, NULL));
-            srs_freep(amf0_str);
+            srs_freepa(amf0_str);
         }
     } else {
-        srs_human_trace("Rtmp packet type=%#x, dts=%d, pts=%d, diff=%d, size=%d",
-            type, timestamp, pts, diff, size);
+        srs_human_trace("Rtmp packet id=%"PRId64"/%.1f/%.1f, type=%#x, dts=%d, pts=%d, ndiff=%d, diff=%d, size=%d",
+            nb_packets, pi, gfps, type, timestamp, pts, ndiff, diff, size);
     }
     
     return ret;
@@ -2401,7 +2432,7 @@ const char* srs_human_format_time()
         tm->tm_hour, tm->tm_min, tm->tm_sec, 
         (int)(tv.tv_usec / 1000));
         
-    // for srs-librtmp, @see https://github.com/simple-rtmp-server/srs/issues/213
+    // for srs-librtmp, @see https://github.com/ossrs/srs/issues/213
     buf[sizeof(buf) - 1] = 0;
     
     return buf;

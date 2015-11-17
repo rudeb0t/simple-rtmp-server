@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 SRS(simple-rtmp-server)
+Copyright (c) 2013-2015 SRS(ossrs)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -43,7 +43,7 @@ using namespace std;
 #include <srs_kernel_utility.hpp>
 #include <srs_kernel_error.hpp>
 #include <srs_protocol_kbps.hpp>
-#include <srs_app_json.hpp>
+#include <srs_protocol_json.hpp>
 #include <srs_kernel_stream.hpp>
 
 // the longest time to wait for a process to quit.
@@ -161,11 +161,6 @@ string srs_path_build_timestamp(string template_path)
     
     // [2006], replace with current year.
     if (true) {
-        snprintf(buf, sizeof(buf), "%d", 1900 + tm->tm_year);
-        path = srs_string_replace(path, "[2006]", buf);
-    }
-    // [2006], replace with current year.
-    if (true) {
         snprintf(buf, sizeof(buf), "%04d", 1900 + tm->tm_year);
         path = srs_string_replace(path, "[2006]", buf);
     }
@@ -274,8 +269,11 @@ int srs_kill_forced(int& pid)
     // other signals, directly exit(123), for example:
     //        9) SIGKILL    15) SIGTERM
     int status = 0;
-    if (waitpid(pid, &status, 0) < 0) {
-        return ERROR_SYSTEM_KILL;
+    // @remark when we use SIGKILL to kill process, it must be killed,
+    //      so we always wait it to quit by infinite loop.
+    while (waitpid(pid, &status, 0) < 0) {
+        st_usleep(10 * 1000);
+        continue;
     }
     
     srs_trace("SIGKILL stop process pid=%d ok.", pid);
@@ -481,7 +479,7 @@ bool get_proc_self_stat(SrsProcSelfStat& r)
 void srs_update_proc_stat()
 {
     // @see: http://stackoverflow.com/questions/7298646/calculating-user-nice-sys-idle-iowait-irq-and-sirq-from-proc-stat/7298711
-    // @see https://github.com/simple-rtmp-server/srs/issues/397
+    // @see https://github.com/ossrs/srs/issues/397
     static int user_hz = 0;
     if (user_hz <= 0) {
         user_hz = (int)sysconf(_SC_CLK_TCK);
@@ -1238,7 +1236,7 @@ void retrieve_local_ipv4_ips()
         // retrieve ipv4 addr
         // ignore the tun0 network device, 
         // which addr is NULL.
-        // @see: https://github.com/simple-rtmp-server/srs/issues/141
+        // @see: https://github.com/ossrs/srs/issues/141
         if (addr && addr->sa_family == AF_INET) {
             in_addr* inaddr = &((sockaddr_in*)addr)->sin_addr;
             

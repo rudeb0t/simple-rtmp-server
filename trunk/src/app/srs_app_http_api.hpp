@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 SRS(simple-rtmp-server)
+Copyright (c) 2013-2015 SRS(ossrs)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -132,6 +132,15 @@ public:
     virtual int serve_http(ISrsHttpResponseWriter* w, ISrsHttpMessage* r);
 };
 
+class SrsGoApiFeatures : public ISrsHttpHandler
+{
+public:
+    SrsGoApiFeatures();
+    virtual ~SrsGoApiFeatures();
+public:
+    virtual int serve_http(ISrsHttpResponseWriter* w, ISrsHttpMessage* r);
+};
+
 class SrsGoApiRequests : public ISrsHttpHandler
 {
 public:
@@ -155,6 +164,24 @@ class SrsGoApiStreams : public ISrsHttpHandler
 public:
     SrsGoApiStreams();
     virtual ~SrsGoApiStreams();
+public:
+    virtual int serve_http(ISrsHttpResponseWriter* w, ISrsHttpMessage* r);
+};
+
+class SrsGoApiClients : public ISrsHttpHandler
+{
+public:
+    SrsGoApiClients();
+    virtual ~SrsGoApiClients();
+public:
+    virtual int serve_http(ISrsHttpResponseWriter* w, ISrsHttpMessage* r);
+};
+
+class SrsGoApiError : public ISrsHttpHandler
+{
+public:
+    SrsGoApiError();
+    virtual ~SrsGoApiError();
 public:
     virtual int serve_http(ISrsHttpResponseWriter* w, ISrsHttpMessage* r);
 };

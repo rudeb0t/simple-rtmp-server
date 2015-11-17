@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 SRS(simple-rtmp-server)
+Copyright (c) 2013-2015 SRS(ossrs)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -93,6 +93,8 @@ SrsRtmpConn::SrsRtmpConn(SrsServer* svr, st_netfd_t c)
     mw_sleep = SRS_PERF_MW_SLEEP;
     mw_enabled = false;
     realtime = SRS_PERF_MIN_LATENCY_ENABLED;
+    send_min_interval = 0;
+    tcp_nodelay = false;
     
     _srs_config->subscribe(this);
 }
@@ -208,9 +210,7 @@ int SrsRtmpConn::do_cycle()
     ret = service_cycle();
     
     http_hooks_on_close();
-    SrsStatistic* stat = SrsStatistic::instance();
-    stat->on_disconnect(_srs_context->get_id());
-    
+
     return ret;
 }
 
@@ -247,6 +247,36 @@ int SrsRtmpConn::on_reload_vhost_mw(string vhost)
     return ret;
 }
 
+int SrsRtmpConn::on_reload_vhost_smi(string vhost)
+{
+    int ret = ERROR_SUCCESS;
+    
+    if (req->vhost != vhost) {
+        return ret;
+    }
+    
+    double smi = _srs_config->get_send_min_interval(vhost);
+    if (smi != send_min_interval) {
+        srs_trace("apply smi %.2f=>%.2f", send_min_interval, smi);
+        send_min_interval = smi;
+    }
+    
+    return ret;
+}
+
+int SrsRtmpConn::on_reload_vhost_tcp_nodelay(string vhost)
+{
+    int ret = ERROR_SUCCESS;
+    
+    if (req->vhost != vhost) {
+        return ret;
+    }
+    
+    set_sock_options();
+    
+    return ret;
+}
+
 int SrsRtmpConn::on_reload_vhost_realtime(string vhost)
 {
     int ret = ERROR_SUCCESS;
@@ -256,9 +286,45 @@ int SrsRtmpConn::on_reload_vhost_realtime(string vhost)
     }
     
     bool realtime_enabled = _srs_config->get_realtime_enabled(req->vhost);
-    srs_trace("realtime changed %d=>%d", realtime, realtime_enabled);
-    realtime = realtime_enabled;
+    if (realtime_enabled != realtime) {
+        srs_trace("realtime changed %d=>%d", realtime, realtime_enabled);
+        realtime = realtime_enabled;
+    }
 
+    return ret;
+}
+
+int SrsRtmpConn::on_reload_vhost_p1stpt(string vhost)
+{
+    int ret = ERROR_SUCCESS;
+    
+    if (req->vhost != vhost) {
+        return ret;
+    }
+    
+    int p1stpt = _srs_config->get_publish_1stpkt_timeout(req->vhost);
+    if (p1stpt != publish_1stpkt_timeout) {
+        srs_trace("p1stpt changed %d=>%d", publish_1stpkt_timeout, p1stpt);
+        publish_1stpkt_timeout = p1stpt;
+    }
+    
+    return ret;
+}
+
+int SrsRtmpConn::on_reload_vhost_pnt(string vhost)
+{
+    int ret = ERROR_SUCCESS;
+    
+    if (req->vhost != vhost) {
+        return ret;
+    }
+    
+    int pnt = _srs_config->get_publish_normal_timeout(req->vhost);
+    if (pnt != publish_normal_timeout) {
+        srs_trace("p1stpt changed %d=>%d", publish_normal_timeout, pnt);
+        publish_normal_timeout = pnt;
+    }
+    
     return ret;
 }
 
@@ -307,7 +373,7 @@ int SrsRtmpConn::service_cycle()
     }
     
     // do token traverse before serve it.
-    // @see https://github.com/simple-rtmp-server/srs/pull/239
+    // @see https://github.com/ossrs/srs/pull/239
     if (true) {
         bool vhost_is_edge = _srs_config->get_vhost_is_edge(req->vhost);
         bool edge_traverse = _srs_config->get_vhost_edge_token_traverse(req->vhost);
@@ -318,6 +384,16 @@ int SrsRtmpConn::service_cycle()
             }
         }
     }
+    
+    // set chunk size to larger.
+    // set the chunk size before any larger response greater than 128,
+    // to make OBS happy, @see https://github.com/ossrs/srs/issues/454
+    int chunk_size = _srs_config->get_chunk_size(req->vhost);
+    if ((ret = rtmp->set_chunk_size(chunk_size)) != ERROR_SUCCESS) {
+        srs_error("set chunk_size=%d failed. ret=%d", chunk_size, ret);
+        return ret;
+    }
+    srs_info("set chunk_size=%d success", chunk_size);
     
     // response the client connect ok.
     if ((ret = rtmp->response_connect_app(req, local_ip.c_str())) != ERROR_SUCCESS) {
@@ -363,7 +439,7 @@ int SrsRtmpConn::service_cycle()
         // logical accept and retry stream service.
         if (ret == ERROR_CONTROL_RTMP_CLOSE) {
             // TODO: FIXME: use ping message to anti-death of socket.
-            // @see: https://github.com/simple-rtmp-server/srs/issues/39
+            // @see: https://github.com/ossrs/srs/issues/39
             // set timeout to a larger value, for user paused.
             rtmp->set_recv_timeout(SRS_PAUSED_RECV_TIMEOUT_US);
             rtmp->set_send_timeout(SRS_PAUSED_SEND_TIMEOUT_US);
@@ -406,14 +482,6 @@ int SrsRtmpConn::stream_service_cycle()
     rtmp->set_recv_timeout(SRS_CONSTS_RTMP_RECV_TIMEOUT_US);
     rtmp->set_send_timeout(SRS_CONSTS_RTMP_SEND_TIMEOUT_US);
     
-    // set chunk size to larger.
-    int chunk_size = _srs_config->get_chunk_size(req->vhost);
-    if ((ret = rtmp->set_chunk_size(chunk_size)) != ERROR_SUCCESS) {
-        srs_error("set chunk_size=%d failed. ret=%d", chunk_size, ret);
-        return ret;
-    }
-    srs_info("set chunk_size=%d success", chunk_size);
-    
     // find a source to serve.
     SrsSource* source = SrsSource::fetch(req);
     if (!source) {
@@ -425,7 +493,7 @@ int SrsRtmpConn::stream_service_cycle()
     
     // update the statistic when source disconveried.
     SrsStatistic* stat = SrsStatistic::instance();
-    if ((ret = stat->on_client(_srs_context->get_id(), req)) != ERROR_SUCCESS) {
+    if ((ret = stat->on_client(_srs_context->get_id(), req, this, type)) != ERROR_SUCCESS) {
         srs_error("stat client failed. ret=%d", ret);
         return ret;
     }
@@ -538,7 +606,7 @@ int SrsRtmpConn::playing(SrsSource* source)
     srs_verbose("consumer created success.");
 
     // use isolate thread to recv, 
-    // @see: https://github.com/simple-rtmp-server/srs/issues/217
+    // @see: https://github.com/ossrs/srs/issues/217
     SrsQueueRecvThread trd(consumer, rtmp, SRS_PERF_MW_SLEEP);
     
     // start isolate recv thread.
@@ -589,17 +657,29 @@ int SrsRtmpConn::do_playing(SrsSource* source, SrsConsumer* consumer, SrsQueueRe
     // when mw_sleep changed, resize the socket send buffer.
     mw_enabled = true;
     change_mw_sleep(_srs_config->get_mw_sleep_ms(req->vhost));
+    // initialize the send_min_interval
+    send_min_interval = _srs_config->get_send_min_interval(req->vhost);
     
     // set the sock options.
-    play_set_sock_options();
+    set_sock_options();
+    
+    srs_trace("start play smi=%.2f, mw_sleep=%d, mw_enabled=%d, realtime=%d, tcp_nodelay=%d",
+        send_min_interval, mw_sleep, mw_enabled, realtime, tcp_nodelay);
     
     while (!disposed) {
         // collect elapse for pithy print.
         pprint->elapse();
+        
+        // when source is set to expired, disconnect it.
+        if (expired) {
+            ret = ERROR_USER_DISCONNECT;
+            srs_error("connection expired. ret=%d", ret);
+            return ret;
+        }
 
         // to use isolate thread to recv, can improve about 33% performance.
-        // @see: https://github.com/simple-rtmp-server/srs/issues/196
-        // @see: https://github.com/simple-rtmp-server/srs/issues/217
+        // @see: https://github.com/ossrs/srs/issues/196
+        // @see: https://github.com/ossrs/srs/issues/217
         while (!trd->empty()) {
             SrsCommonMessage* msg = trd->pump();
             srs_verbose("pump client message to process.");
@@ -614,7 +694,7 @@ int SrsRtmpConn::do_playing(SrsSource* source, SrsConsumer* consumer, SrsQueueRe
         
         // quit when recv thread error.
         if ((ret = trd->error_code()) != ERROR_SUCCESS) {
-            if (!srs_is_client_gracefully_close(ret)) {
+            if (!srs_is_client_gracefully_close(ret) && !srs_is_system_control_error(ret)) {
                 srs_error("recv thread failed. ret=%d", ret);
             }
             return ret;
@@ -625,8 +705,8 @@ int SrsRtmpConn::do_playing(SrsSource* source, SrsConsumer* consumer, SrsQueueRe
         srs_verbose("send thread now=%"PRId64"us, wait %dms", srs_update_system_time_ms(), mw_sleep);
         
         // wait for message to incoming.
-        // @see https://github.com/simple-rtmp-server/srs/issues/251
-        // @see https://github.com/simple-rtmp-server/srs/issues/257
+        // @see https://github.com/ossrs/srs/issues/251
+        // @see https://github.com/ossrs/srs/issues/257
         if (realtime) {
             // for realtime, min required msgs is 0, send when got one+ msgs.
             consumer->wait(0, mw_sleep);
@@ -641,7 +721,8 @@ int SrsRtmpConn::do_playing(SrsSource* source, SrsConsumer* consumer, SrsQueueRe
         
         // get messages from consumer.
         // each msg in msgs.msgs must be free, for the SrsMessageArray never free them.
-        int count = 0;
+        // @remark when enable send_min_interval, only fetch one message a time.
+        int count = (send_min_interval > 0)? 1 : 0;
         if ((ret = consumer->dump_packets(&msgs, count)) != ERROR_SUCCESS) {
             srs_error("get messages from consumer failed. ret=%d", ret);
             return ret;
@@ -708,13 +789,18 @@ int SrsRtmpConn::do_playing(SrsSource* source, SrsConsumer* consumer, SrsQueueRe
         }
         
         // if duration specified, and exceed it, stop play live.
-        // @see: https://github.com/simple-rtmp-server/srs/issues/45
+        // @see: https://github.com/ossrs/srs/issues/45
         if (user_specified_duration_to_stop) {
             if (duration >= (int64_t)req->duration) {
                 ret = ERROR_RTMP_DURATION_EXCEED;
                 srs_trace("stop live for duration exceed. ret=%d", ret);
                 return ret;
             }
+        }
+        
+        // apply the minimal interval for delivery stream in ms.
+        if (send_min_interval > 0) {
+            st_usleep((int64_t)(send_min_interval * 1000));
         }
     }
     
@@ -739,7 +825,7 @@ int SrsRtmpConn::publishing(SrsSource* source)
     bool vhost_is_edge = _srs_config->get_vhost_is_edge(req->vhost);
     if ((ret = acquire_publish(source, vhost_is_edge)) == ERROR_SUCCESS) {
         // use isolate thread to recv,
-        // @see: https://github.com/simple-rtmp-server/srs/issues/237
+        // @see: https://github.com/ossrs/srs/issues/237
         SrsPublishRecvThread trd(rtmp, req, 
             st_netfd_fileno(stfd), 0, this, source, true, vhost_is_edge);
 
@@ -748,7 +834,14 @@ int SrsRtmpConn::publishing(SrsSource* source)
 
         // stop isolate recv thread
         trd.stop();
-
+    }
+    
+    // whatever the acquire publish, always release publish.
+    // when the acquire error in the midlle-way, the publish state changed,
+    // but failed, so we must cleanup it.
+    // @see https://github.com/ossrs/srs/issues/474
+    // @remark when stream is busy, should never release it.
+    if (ret != ERROR_SYSTEM_STREAM_BUSY) {
         release_publish(source, vhost_is_edge);
     }
 
@@ -769,23 +862,49 @@ int SrsRtmpConn::do_publishing(SrsSource* source, SrsPublishRecvThread* trd)
         srs_error("start isolate recv thread failed. ret=%d", ret);
         return ret;
     }
+    
+    // change the isolate recv thread context id,
+    // merge its log to current thread.
+    int receive_thread_cid = trd->get_cid();
+    trd->set_cid(_srs_context->get_id());
+    
+    // initialize the publish timeout.
+    publish_1stpkt_timeout = _srs_config->get_publish_1stpkt_timeout(req->vhost);
+    publish_normal_timeout = _srs_config->get_publish_1stpkt_timeout(req->vhost);
+    
+    // set the sock options.
+    set_sock_options();
+    
+    if (true) {
+        bool mr = _srs_config->get_mr_enabled(req->vhost);
+        int mr_sleep = _srs_config->get_mr_sleep_ms(req->vhost);
+        srs_trace("start publish mr=%d/%d, p1stpt=%d, pnt=%d, tcp_nodelay=%d, rtcid=%d",
+                  mr, mr_sleep, publish_1stpkt_timeout, publish_normal_timeout, tcp_nodelay, receive_thread_cid);
+    }
 
     int64_t nb_msgs = 0;
     while (!disposed) {
         pprint->elapse();
+        
+        // when source is set to expired, disconnect it.
+        if (expired) {
+            ret = ERROR_USER_DISCONNECT;
+            srs_error("connection expired. ret=%d", ret);
+            return ret;
+        }
 
         // cond wait for timeout.
         if (nb_msgs == 0) {
             // when not got msgs, wait for a larger timeout.
-            // @see https://github.com/simple-rtmp-server/srs/issues/441
-            trd->wait(SRS_CONSTS_RTMP_PUBLISHER_NO_MSG_RECV_TIMEOUT_US / 1000);
+            // @see https://github.com/ossrs/srs/issues/441
+            trd->wait(publish_1stpkt_timeout);
         } else {
-            trd->wait(SRS_CONSTS_RTMP_PUBLISHER_RECV_TIMEOUT_US / 1000);
+            trd->wait(publish_normal_timeout);
         }
 
         // check the thread error code.
         if ((ret = trd->error_code()) != ERROR_SUCCESS) {
-            if (!srs_is_client_gracefully_close(ret)) {
+            if (!srs_is_system_control_error(ret) && !srs_is_client_gracefully_close(ret)) {
                 srs_error("recv thread failed. ret=%d", ret);
             }
             return ret;
@@ -794,8 +913,8 @@ int SrsRtmpConn::do_publishing(SrsSource* source, SrsPublishRecvThread* trd)
         // when not got any messages, timeout.
         if (trd->nb_msgs() <= nb_msgs) {
             ret = ERROR_SOCKET_TIMEOUT;
-            srs_warn("publish timeout %"PRId64"us, nb_msgs=%"PRId64", ret=%d",
-                     SRS_CONSTS_RTMP_RECV_TIMEOUT_US, nb_msgs, ret);
+            srs_warn("publish timeout %dms, nb_msgs=%"PRId64", ret=%d",
+                nb_msgs? publish_normal_timeout : publish_1stpkt_timeout, nb_msgs, ret);
             break;
         }
         nb_msgs = trd->nb_msgs();
@@ -806,10 +925,10 @@ int SrsRtmpConn::do_publishing(SrsSource* source, SrsPublishRecvThread* trd)
             bool mr = _srs_config->get_mr_enabled(req->vhost);
             int mr_sleep = _srs_config->get_mr_sleep_ms(req->vhost);
             srs_trace("<- "SRS_CONSTS_LOG_CLIENT_PUBLISH
-                " time=%"PRId64", okbps=%d,%d,%d, ikbps=%d,%d,%d, mr=%d/%d", pprint->age(),
+                " time=%"PRId64", okbps=%d,%d,%d, ikbps=%d,%d,%d, mr=%d/%d, p1stpt=%d, pnt=%d", pprint->age(),
                 kbps->get_send_kbps(), kbps->get_send_kbps_30s(), kbps->get_send_kbps_5m(),
                 kbps->get_recv_kbps(), kbps->get_recv_kbps_30s(), kbps->get_recv_kbps_5m(),
-                mr, mr_sleep
+                mr, mr_sleep, publish_1stpkt_timeout, publish_normal_timeout
             );
         }
     }
@@ -832,10 +951,12 @@ int SrsRtmpConn::acquire_publish(SrsSource* source, bool is_edge)
     if (is_edge) {
         if ((ret = source->on_edge_start_publish()) != ERROR_SUCCESS) {
             srs_error("notice edge start publish stream failed. ret=%d", ret);
+            return ret;
         }        
     } else {
         if ((ret = source->on_publish()) != ERROR_SUCCESS) {
             srs_error("notify publish failed. ret=%d", ret);
+            return ret;
         }
     }
 
@@ -986,7 +1107,7 @@ int SrsRtmpConn::process_play_control_msg(SrsConsumer* consumer, SrsCommonMessag
     SrsAutoFree(SrsPacket, pkt);
     
     // for jwplayer/flowplayer, which send close as pause message.
-    // @see https://github.com/simple-rtmp-server/srs/issues/6
+    // @see https://github.com/ossrs/srs/issues/6
     SrsCloseStreamPacket* close = dynamic_cast<SrsCloseStreamPacket*>(pkt);
     if (close) {
         ret = ERROR_CONTROL_RTMP_CLOSE;
@@ -996,7 +1117,7 @@ int SrsRtmpConn::process_play_control_msg(SrsConsumer* consumer, SrsCommonMessag
     
     // call msg,
     // support response null first,
-    // @see https://github.com/simple-rtmp-server/srs/issues/106
+    // @see https://github.com/ossrs/srs/issues/106
     // TODO: FIXME: response in right way, or forward in edge mode.
     SrsCallPacket* call = dynamic_cast<SrsCallPacket*>(pkt);
     if (call) {
@@ -1007,7 +1128,9 @@ int SrsRtmpConn::process_play_control_msg(SrsConsumer* consumer, SrsCommonMessag
             res->command_object = SrsAmf0Any::null();
             res->response = SrsAmf0Any::null();
             if ((ret = rtmp->send_and_free_packet(res, 0)) != ERROR_SUCCESS) {
-                srs_warn("response call failed. ret=%d", ret);
+                if (!srs_is_system_control_error(ret) && !srs_is_client_gracefully_close(ret)) {
+                    srs_warn("response call failed. ret=%d", ret);
+                }
                 return ret;
             }
         }
@@ -1086,27 +1209,31 @@ void SrsRtmpConn::change_mw_sleep(int sleep_ms)
     mw_sleep = sleep_ms;
 }
 
-void SrsRtmpConn::play_set_sock_options()
+void SrsRtmpConn::set_sock_options()
 {
+    bool nvalue = _srs_config->get_tcp_nodelay(req->vhost);
+    if (nvalue != tcp_nodelay) {
+        tcp_nodelay = nvalue;
 #ifdef SRS_PERF_TCP_NODELAY
-    if (true) {
         int fd = st_netfd_fileno(stfd);
-    
+
         socklen_t nb_v = sizeof(int);
-        
+
         int ov = 0;
         getsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &ov, &nb_v);
-        
-        int v = 1;
+
+        int v = tcp_nodelay;
         // set the socket send buffer when required larger buffer
         if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &v, nb_v) < 0) {
             srs_warn("set sock TCP_NODELAY=%d failed.", v);
         }
         getsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &v, &nb_v);
-        
+
         srs_trace("set TCP_NODELAY %d=>%d", ov, v);
-    }
+#else
+        srs_warn("SRS_PERF_TCP_NODELAY is disabled but tcp_nodelay configed.");
 #endif
+    }
 }
 
 int SrsRtmpConn::check_edge_token_traverse_auth()
@@ -1204,20 +1331,31 @@ int SrsRtmpConn::http_hooks_on_connect()
     int ret = ERROR_SUCCESS;
     
 #ifdef SRS_AUTO_HTTP_CALLBACK
-    if (_srs_config->get_vhost_http_hooks_enabled(req->vhost)) {
-        // HTTP: on_connect 
-        SrsConfDirective* on_connect = _srs_config->get_vhost_on_connect(req->vhost);
-        if (!on_connect) {
+    if (!_srs_config->get_vhost_http_hooks_enabled(req->vhost)) {
+        return ret;
+    }
+    
+    // the http hooks will cause context switch,
+    // so we must copy all hooks for the on_connect may freed.
+    // @see https://github.com/ossrs/srs/issues/475
+    vector<string> hooks;
+    
+    if (true) {
+        SrsConfDirective* conf = _srs_config->get_vhost_on_connect(req->vhost);
+        
+        if (!conf) {
             srs_info("ignore the empty http callback: on_connect");
             return ret;
         }
         
-        for (int i = 0; i < (int)on_connect->args.size(); i++) {
-            std::string url = on_connect->args.at(i);
-            if ((ret = SrsHttpHooks::on_connect(url, req)) != ERROR_SUCCESS) {
-                srs_error("hook client on_connect failed. url=%s, ret=%d", url.c_str(), ret);
-                return ret;
-            }
+        hooks = conf->args;
+    }
+    
+    for (int i = 0; i < (int)hooks.size(); i++) {
+        std::string url = hooks.at(i);
+        if ((ret = SrsHttpHooks::on_connect(url, req)) != ERROR_SUCCESS) {
+            srs_error("hook client on_connect failed. url=%s, ret=%d", url.c_str(), ret);
+            return ret;
         }
     }
 #endif
@@ -1228,19 +1366,29 @@ int SrsRtmpConn::http_hooks_on_connect()
 void SrsRtmpConn::http_hooks_on_close()
 {
 #ifdef SRS_AUTO_HTTP_CALLBACK
-    if (_srs_config->get_vhost_http_hooks_enabled(req->vhost)) {
-        // whatever the ret code, notify the api hooks.
-        // HTTP: on_close 
-        SrsConfDirective* on_close = _srs_config->get_vhost_on_close(req->vhost);
-        if (!on_close) {
+    if (!_srs_config->get_vhost_http_hooks_enabled(req->vhost)) {
+        return;
+    }
+    
+    // the http hooks will cause context switch,
+    // so we must copy all hooks for the on_connect may freed.
+    // @see https://github.com/ossrs/srs/issues/475
+    vector<string> hooks;
+    
+    if (true) {
+        SrsConfDirective* conf = _srs_config->get_vhost_on_close(req->vhost);
+        
+        if (!conf) {
             srs_info("ignore the empty http callback: on_close");
             return;
         }
         
-        for (int i = 0; i < (int)on_close->args.size(); i++) {
-            std::string url = on_close->args.at(i);
-            SrsHttpHooks::on_close(url, req, kbps->get_send_bytes(), kbps->get_recv_bytes());
-        }
+        hooks = conf->args;
+    }
+    
+    for (int i = 0; i < (int)hooks.size(); i++) {
+        std::string url = hooks.at(i);
+        SrsHttpHooks::on_close(url, req, kbps->get_send_bytes(), kbps->get_recv_bytes());
     }
 #endif
 }
@@ -1250,20 +1398,31 @@ int SrsRtmpConn::http_hooks_on_publish()
     int ret = ERROR_SUCCESS;
     
 #ifdef SRS_AUTO_HTTP_CALLBACK
-    if (_srs_config->get_vhost_http_hooks_enabled(req->vhost)) {
-        // HTTP: on_publish 
-        SrsConfDirective* on_publish = _srs_config->get_vhost_on_publish(req->vhost);
-        if (!on_publish) {
+    if (!_srs_config->get_vhost_http_hooks_enabled(req->vhost)) {
+        return ret;
+    }
+    
+    // the http hooks will cause context switch,
+    // so we must copy all hooks for the on_connect may freed.
+    // @see https://github.com/ossrs/srs/issues/475
+    vector<string> hooks;
+    
+    if (true) {
+        SrsConfDirective* conf = _srs_config->get_vhost_on_publish(req->vhost);
+        
+        if (!conf) {
             srs_info("ignore the empty http callback: on_publish");
             return ret;
         }
         
-        for (int i = 0; i < (int)on_publish->args.size(); i++) {
-            std::string url = on_publish->args.at(i);
-            if ((ret = SrsHttpHooks::on_publish(url, req)) != ERROR_SUCCESS) {
-                srs_error("hook client on_publish failed. url=%s, ret=%d", url.c_str(), ret);
-                return ret;
-            }
+        hooks = conf->args;
+    }
+    
+    for (int i = 0; i < (int)hooks.size(); i++) {
+        std::string url = hooks.at(i);
+        if ((ret = SrsHttpHooks::on_publish(url, req)) != ERROR_SUCCESS) {
+            srs_error("hook client on_publish failed. url=%s, ret=%d", url.c_str(), ret);
+            return ret;
         }
     }
 #endif
@@ -1274,19 +1433,29 @@ int SrsRtmpConn::http_hooks_on_publish()
 void SrsRtmpConn::http_hooks_on_unpublish()
 {
 #ifdef SRS_AUTO_HTTP_CALLBACK
-    if (_srs_config->get_vhost_http_hooks_enabled(req->vhost)) {
-        // whatever the ret code, notify the api hooks.
-        // HTTP: on_unpublish 
-        SrsConfDirective* on_unpublish = _srs_config->get_vhost_on_unpublish(req->vhost);
-        if (!on_unpublish) {
+    if (!_srs_config->get_vhost_http_hooks_enabled(req->vhost)) {
+        return;
+    }
+    
+    // the http hooks will cause context switch,
+    // so we must copy all hooks for the on_connect may freed.
+    // @see https://github.com/ossrs/srs/issues/475
+    vector<string> hooks;
+    
+    if (true) {
+        SrsConfDirective* conf = _srs_config->get_vhost_on_unpublish(req->vhost);
+        
+        if (!conf) {
             srs_info("ignore the empty http callback: on_unpublish");
             return;
         }
         
-        for (int i = 0; i < (int)on_unpublish->args.size(); i++) {
-            std::string url = on_unpublish->args.at(i);
-            SrsHttpHooks::on_unpublish(url, req);
-        }
+        hooks = conf->args;
+    }
+    
+    for (int i = 0; i < (int)hooks.size(); i++) {
+        std::string url = hooks.at(i);
+        SrsHttpHooks::on_unpublish(url, req);
     }
 #endif
 }
@@ -1296,20 +1465,31 @@ int SrsRtmpConn::http_hooks_on_play()
     int ret = ERROR_SUCCESS;
     
 #ifdef SRS_AUTO_HTTP_CALLBACK
-    if (_srs_config->get_vhost_http_hooks_enabled(req->vhost)) {
-        // HTTP: on_play 
-        SrsConfDirective* on_play = _srs_config->get_vhost_on_play(req->vhost);
-        if (!on_play) {
+    if (!_srs_config->get_vhost_http_hooks_enabled(req->vhost)) {
+        return ret;
+    }
+    
+    // the http hooks will cause context switch,
+    // so we must copy all hooks for the on_connect may freed.
+    // @see https://github.com/ossrs/srs/issues/475
+    vector<string> hooks;
+    
+    if (true) {
+        SrsConfDirective* conf = _srs_config->get_vhost_on_play(req->vhost);
+        
+        if (!conf) {
             srs_info("ignore the empty http callback: on_play");
             return ret;
         }
         
-        for (int i = 0; i < (int)on_play->args.size(); i++) {
-            std::string url = on_play->args.at(i);
-            if ((ret = SrsHttpHooks::on_play(url, req)) != ERROR_SUCCESS) {
-                srs_error("hook client on_play failed. url=%s, ret=%d", url.c_str(), ret);
-                return ret;
-            }
+        hooks = conf->args;
+    }
+    
+    for (int i = 0; i < (int)hooks.size(); i++) {
+        std::string url = hooks.at(i);
+        if ((ret = SrsHttpHooks::on_play(url, req)) != ERROR_SUCCESS) {
+            srs_error("hook client on_play failed. url=%s, ret=%d", url.c_str(), ret);
+            return ret;
         }
     }
 #endif
@@ -1320,19 +1500,29 @@ int SrsRtmpConn::http_hooks_on_play()
 void SrsRtmpConn::http_hooks_on_stop()
 {
 #ifdef SRS_AUTO_HTTP_CALLBACK
-    if (_srs_config->get_vhost_http_hooks_enabled(req->vhost)) {
-        // whatever the ret code, notify the api hooks.
-        // HTTP: on_stop 
-        SrsConfDirective* on_stop = _srs_config->get_vhost_on_stop(req->vhost);
-        if (!on_stop) {
+    if (!_srs_config->get_vhost_http_hooks_enabled(req->vhost)) {
+        return;
+    }
+    
+    // the http hooks will cause context switch,
+    // so we must copy all hooks for the on_connect may freed.
+    // @see https://github.com/ossrs/srs/issues/475
+    vector<string> hooks;
+    
+    if (true) {
+        SrsConfDirective* conf = _srs_config->get_vhost_on_stop(req->vhost);
+        
+        if (!conf) {
             srs_info("ignore the empty http callback: on_stop");
             return;
         }
         
-        for (int i = 0; i < (int)on_stop->args.size(); i++) {
-            std::string url = on_stop->args.at(i);
-            SrsHttpHooks::on_stop(url, req);
-        }
+        hooks = conf->args;
+    }
+    
+    for (int i = 0; i < (int)hooks.size(); i++) {
+        std::string url = hooks.at(i);
+        SrsHttpHooks::on_stop(url, req);
     }
 #endif
 

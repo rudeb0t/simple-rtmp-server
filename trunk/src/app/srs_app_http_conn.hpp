@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 SRS(simple-rtmp-server)
+Copyright (c) 2013-2015 SRS(ossrs)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -203,6 +203,10 @@ private:
     std::map<std::string, std::string> _query;
     // the transport connection, can be NULL.
     SrsConnection* conn;
+    // whether request is jsonp.
+    bool jsonp;
+    // the method in QueryString will override the HTTP method.
+    std::string jsonp_method;
 public:
     SrsHttpMessage(SrsStSocket* io, SrsConnection* c);
     virtual ~SrsHttpMessage();
@@ -245,7 +249,12 @@ public:
     virtual std::string url();
     virtual std::string host();
     virtual std::string path();
+    virtual std::string query();
     virtual std::string ext();
+    /**
+     * get the RESTful matched id.
+     */
+    virtual int parse_rest_id(std::string pattern);
 public:
     /**
      * read body to string.
@@ -280,6 +289,8 @@ public:
      * @remark user must free the return request.
      */
     virtual SrsRequest* to_request(std::string vhost);
+public:
+    virtual bool is_jsonp();
 };
 
 /**

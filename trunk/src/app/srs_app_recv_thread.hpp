@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 SRS(simple-rtmp-server)
+Copyright (c) 2013-2015 SRS(ossrs)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -91,6 +91,8 @@ public:
     SrsRecvThread(ISrsMessageHandler* msg_handler, SrsRtmpServer* rtmp_sdk, int timeout_ms);
     virtual ~SrsRecvThread();
 public:
+    virtual int cid();
+public:
     virtual int start();
     virtual void stop();
     virtual void stop_loop();
@@ -105,7 +107,7 @@ public:
 * the recv thread used to replace the timeout recv,
 * which hurt performance for the epoll_ctrl is frequently used.
 * @see: SrsRtmpConn::playing
-* @see: https://github.com/simple-rtmp-server/srs/issues/217
+* @see: https://github.com/ossrs/srs/issues/217
 */
 class SrsQueueRecvThread : public ISrsMessageHandler
 {
@@ -138,7 +140,7 @@ public:
 
 /**
 * the publish recv thread got message and callback the source method to process message.
-* @see: https://github.com/simple-rtmp-server/srs/issues/237
+* @see: https://github.com/ossrs/srs/issues/237
 */
 class SrsPublishRecvThread : virtual public ISrsMessageHandler
 #ifdef SRS_PERF_MERGED_READ
@@ -153,12 +155,12 @@ private:
     // the msgs already got.
     int64_t _nb_msgs;
     // for mr(merged read),
-    // @see https://github.com/simple-rtmp-server/srs/issues/241
+    // @see https://github.com/ossrs/srs/issues/241
     bool mr;
     int mr_fd;
     int mr_sleep;
     // for realtime
-    // @see https://github.com/simple-rtmp-server/srs/issues/257
+    // @see https://github.com/ossrs/srs/issues/257
     bool realtime;
     // the recv thread error code.
     int recv_error_code;
@@ -168,8 +170,11 @@ private:
     bool _is_fmle;
     bool _is_edge;
     // the error timeout cond
-    // @see https://github.com/simple-rtmp-server/srs/issues/244
+    // @see https://github.com/ossrs/srs/issues/244
     st_cond_t error;
+    // merged context id.
+    int cid;
+    int ncid;
 public:
     SrsPublishRecvThread(SrsRtmpServer* rtmp_sdk, 
         SrsRequest* _req, int mr_sock_fd, int timeout_ms, 
@@ -182,6 +187,8 @@ public:
     virtual int wait(int timeout_ms);
     virtual int64_t nb_msgs();
     virtual int error_code();
+    virtual void set_cid(int v);
+    virtual int get_cid();
 public:
     virtual int start();
     virtual void stop();

@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 SRS(simple-rtmp-server)
+Copyright (c) 2013-2015 SRS(ossrs)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -21,11 +21,11 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-#ifndef SRS_APP_JSON_HPP
-#define SRS_APP_JSON_HPP
+#ifndef SRS_PROTOCOL_JSON_HPP
+#define SRS_PROTOCOL_JSON_HPP
 
 /*
-#include <srs_app_json.hpp>
+#include <srs_protocol_json.hpp>
 */
 #include <srs_core.hpp>
 
@@ -215,10 +215,11 @@ that is:
 ////////////////////////////////////////////////////////////////////////
 #define SRS_JOBJECT_START "{"
 #define SRS_JFIELD_NAME(k) "\"" << k << "\":"
-#define SRS_JFIELD_STR(k, v) "\"" << k << "\":\"" << v << "\""
-#define SRS_JFIELD_ORG(k, v) "\"" << k << "\":" << std::dec << v
+#define SRS_JFIELD_OBJ(k) SRS_JFIELD_NAME(k) << SRS_JOBJECT_START
+#define SRS_JFIELD_STR(k, v) SRS_JFIELD_NAME(k) << "\"" << v << "\""
+#define SRS_JFIELD_ORG(k, v) SRS_JFIELD_NAME(k) << std::dec << v
 #define SRS_JFIELD_BOOL(k, v) SRS_JFIELD_ORG(k, (v? "true":"false"))
-#define SRS_JFIELD_NULL(k) "\"" << k << "\":null"
+#define SRS_JFIELD_NULL(k) SRS_JFIELD_NAME(k) << "null"
 #define SRS_JFIELD_ERROR(ret) "\"" << "code" << "\":" << ret
 #define SRS_JFIELD_CONT ","
 #define SRS_JOBJECT_END "}"

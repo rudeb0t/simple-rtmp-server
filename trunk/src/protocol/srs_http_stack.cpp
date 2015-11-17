@@ -1,7 +1,7 @@
 /*
  The MIT License (MIT)
  
- Copyright (c) 2013-2015 SRS(simple-rtmp-server)
+ Copyright (c) 2013-2015 SRS(ossrs)
  
  Permission is hereby granted, free of charge, to any person obtaining a copy of
  this software and associated documentation files (the "Software"), to deal in
@@ -23,6 +23,8 @@
 
 #include <srs_http_stack.hpp>
 
+#if !defined(SRS_EXPORT_LIBRTMP)
+
 #include <stdlib.h>
 #include <sstream>
 #include <algorithm>
@@ -32,6 +34,7 @@ using namespace std;
 #include <srs_kernel_log.hpp>
 #include <srs_kernel_utility.hpp>
 #include <srs_kernel_file.hpp>
+#include <srs_protocol_json.hpp>
 
 #define SRS_HTTP_DEFAULT_PAGE "index.html"
 
@@ -119,8 +122,11 @@ string srs_go_http_detect(char* data, int size)
     return "application/octet-stream"; // fallback
 }
 
-// Error replies to the request with the specified error message and HTTP code.
-// The error message should be plain text.
+int srs_go_http_error(ISrsHttpResponseWriter* w, int code)
+{
+    return srs_go_http_error(w, code, srs_generate_http_status_text(code));
+}
+
 int srs_go_http_error(ISrsHttpResponseWriter* w, int code, string error)
 {
     int ret = ERROR_SUCCESS;
@@ -131,16 +137,6 @@ int srs_go_http_error(ISrsHttpResponseWriter* w, int code, string error)
     w->write((char*)error.data(), (int)error.length());
     
     return ret;
-}
-
-int srs_http_response_json(ISrsHttpResponseWriter* w, string data)
-{
-    SrsHttpHeader* h = w->header();
-    
-    h->set_content_length(data.length());
-    h->set_content_type("application/json");
-    
-    return w->write((char*)data.data(), (int)data.length());
 }
 
 SrsHttpHeader::SrsHttpHeader()
@@ -246,7 +242,23 @@ SrsHttpRedirectHandler::~SrsHttpRedirectHandler()
 int SrsHttpRedirectHandler::serve_http(ISrsHttpResponseWriter* w, ISrsHttpMessage* r)
 {
     int ret = ERROR_SUCCESS;
-    // TODO: FIXME: implements it.
+    
+    string location = url;
+    if (!r->query().empty()) {
+        location += "?" + r->query();
+    }
+    
+    string msg = "Redirect to" + location;
+
+    w->header()->set_content_type("text/plain; charset=utf-8");
+    w->header()->set_content_length(msg.length());
+    w->header()->set("Location", location);
+    w->write_header(code);
+
+    w->write((char*)msg.data(), (int)msg.length());
+    w->final_request();
+
+    srs_info("redirect to %s.", location.c_str());
     return ret;
 }
 
@@ -265,7 +277,7 @@ bool SrsHttpNotFoundHandler::is_not_found()
 
 int SrsHttpNotFoundHandler::serve_http(ISrsHttpResponseWriter* w, ISrsHttpMessage* r)
 {
-    return srs_go_http_error(w, SRS_CONSTS_HTTP_NotFound, SRS_CONSTS_HTTP_NotFound_str);
+    return srs_go_http_error(w, SRS_CONSTS_HTTP_NotFound);
 }
 
 SrsHttpFileServer::SrsHttpFileServer(string root_dir)
@@ -611,7 +623,7 @@ int SrsHttpServeMux::handle(std::string pattern, ISrsHttpHandler* handler)
             
             entry = new SrsHttpMuxEntry();
             entry->explicit_match = false;
-            entry->handler = new SrsHttpRedirectHandler(pattern, SRS_CONSTS_HTTP_MovedPermanently);
+            entry->handler = new SrsHttpRedirectHandler(pattern, SRS_CONSTS_HTTP_Found);
             entry->pattern = pattern;
             entry->handler->entry = entry;
             
@@ -762,10 +774,13 @@ ISrsHttpMessage::ISrsHttpMessage()
 
 ISrsHttpMessage::~ISrsHttpMessage()
 {
-    srs_freep(_http_ts_send_buffer);
+    srs_freepa(_http_ts_send_buffer);
 }
 
 char* ISrsHttpMessage::http_ts_send_buffer()
 {
     return _http_ts_send_buffer;
 }
+
+#endif
+

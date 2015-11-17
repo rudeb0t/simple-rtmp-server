@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 SRS(simple-rtmp-server)
+Copyright (c) 2013-2015 SRS(ossrs)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -108,7 +108,7 @@ public:
 /**
 * to alloc and increase fixed space,
 * fast remove and insert for msgs sender.
-* @see https://github.com/simple-rtmp-server/srs/issues/251
+* @see https://github.com/ossrs/srs/issues/251
 */
 class SrsFastVector
 {
@@ -173,11 +173,11 @@ public:
     */
     virtual int enqueue(SrsSharedPtrMessage* msg, bool* is_overflow = NULL);
     /**
-    * get packets in consumer queue.
-    * @pmsgs SrsSharedPtrMessage*[], used to store the msgs, user must alloc it.
-    * @count the count in array, output param.
-    * @max_count the max count to dequeue, must be positive.
-    */
+     * get packets in consumer queue.
+     * @pmsgs SrsSharedPtrMessage*[], used to store the msgs, user must alloc it.
+     * @count the count in array, output param.
+     * @max_count the max count to dequeue, must be positive.
+     */
     virtual int dump_packets(int max_count, SrsSharedPtrMessage** pmsgs, int& count);
     /**
     * dumps packets to consumer, use specified args.
@@ -190,6 +190,10 @@ private:
     * if no iframe found, clear it.
     */
     virtual void shrink();
+public:
+    /**
+     * clear all messages in queue.
+     */
     virtual void clear();
 };
 
@@ -225,7 +229,7 @@ private:
     bool should_update_source_id;
 #ifdef SRS_PERF_QUEUE_COND_WAIT
     // the cond wait for mw.
-    // @see https://github.com/simple-rtmp-server/srs/issues/251
+    // @see https://github.com/ossrs/srs/issues/251
     st_cond_t mw_wait;
     bool mw_waiting;
     int mw_min_msgs;
@@ -256,10 +260,11 @@ public:
     */
     virtual int enqueue(SrsSharedPtrMessage* shared_msg, bool atc, SrsRtmpJitterAlgorithm ag);
     /**
-    * get packets in consumer queue.
-    * @param msgs the msgs array to dump packets to send.
-    * @param count the count in array, output param.
-    */
+     * get packets in consumer queue.
+     * @param msgs the msgs array to dump packets to send.
+     * @param count the count in array, intput and output param.
+     * @remark user can specifies the count to get specified msgs; 0 to get all if possible.
+     */
     virtual int dump_packets(SrsMessageArray* msgs, int& count);
 #ifdef SRS_PERF_QUEUE_COND_WAIT
     /**
@@ -311,7 +316,7 @@ private:
     * 
     * @remark, it is ok for performance, for when we clear the gop cache,
     *       gop cache is disabled for pure audio stream.
-    * @see: https://github.com/simple-rtmp-server/srs/issues/124
+    * @see: https://github.com/ossrs/srs/issues/124
     */
     int audio_after_last_video_count;
     /**

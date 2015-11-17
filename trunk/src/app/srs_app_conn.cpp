@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 SRS(simple-rtmp-server)
+Copyright (c) 2013-2015 SRS(ossrs)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -41,11 +41,12 @@ SrsConnection::SrsConnection(IConnectionManager* cm, st_netfd_t c)
     manager = cm;
     stfd = c;
     disposed = false;
+    expired = false;
     
     // the client thread should reap itself, 
     // so we never use joinable.
     // TODO: FIXME: maybe other thread need to stop it.
-    // @see: https://github.com/simple-rtmp-server/srs/issues/78
+    // @see: https://github.com/ossrs/srs/issues/78
     pthread = new SrsOneCycleThread("conn", this);
 }
 
@@ -114,6 +115,11 @@ void SrsConnection::on_thread_stop()
 int SrsConnection::srs_id()
 {
     return id;
+}
+
+void SrsConnection::expire()
+{
+    expired = true;
 }
 
 

@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 SRS(simple-rtmp-server)
+Copyright (c) 2013-2015 SRS(ossrs)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -95,6 +95,13 @@ public:
     virtual void error(const char* tag, int context_id, const char* fmt, ...);
 };
 
+/**
+ * the context id manager to identify context, for instance, the green-thread.
+ * usage:
+ *      _srs_context->generate_id(); // when thread start.
+ *      _srs_context->get_id(); // get current generated id.
+ *      int old_id = _srs_context->set_id(1000); // set context id if need to merge thread context.
+ */
 // the context for multiple clients.
 class ISrsThreadContext
 {
@@ -102,8 +109,19 @@ public:
     ISrsThreadContext();
     virtual ~ISrsThreadContext();
 public:
+    /**
+     * generate the id for current context.
+     */
     virtual int generate_id();
+    /**
+     * get the generated id of current context.
+     */
     virtual int get_id();
+    /**
+     * set the id of current context.
+     * @return the previous id value; 0 if no context.
+     */
+    virtual int set_id(int v);
 };
 
 // user must provides a log object

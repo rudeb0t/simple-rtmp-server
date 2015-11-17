@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 SRS(simple-rtmp-server)
+Copyright (c) 2013-2015 SRS(ossrs)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -167,6 +167,7 @@ public:
 class SrsDvrAsyncCallOnHls : public ISrsAsyncCallTask
 {
 private:
+    int cid;
     std::string path;
     std::string ts_url;
     std::string m3u8;
@@ -175,7 +176,7 @@ private:
     SrsRequest* req;
     double duration;
 public:
-    SrsDvrAsyncCallOnHls(SrsRequest* r, std::string p, std::string t, std::string m, std::string mu, int s, double d);
+    SrsDvrAsyncCallOnHls(int c, SrsRequest* r, std::string p, std::string t, std::string m, std::string mu, int s, double d);
     virtual ~SrsDvrAsyncCallOnHls();
 public:
     virtual int call();
@@ -188,10 +189,11 @@ public:
 class SrsDvrAsyncCallOnHlsNotify : public ISrsAsyncCallTask
 {
 private:
+    int cid;
     std::string ts_url;
     SrsRequest* req;
 public:
-    SrsDvrAsyncCallOnHlsNotify(SrsRequest* r, std::string u);
+    SrsDvrAsyncCallOnHlsNotify(int c, SrsRequest* r, std::string u);
     virtual ~SrsDvrAsyncCallOnHlsNotify();
 public:
     virtual int call();
@@ -253,12 +255,12 @@ private:
     /**
     * the current audio codec, when open new muxer,
     * set the muxer audio codec.
-    * @see https://github.com/simple-rtmp-server/srs/issues/301
+    * @see https://github.com/ossrs/srs/issues/301
     */
     SrsCodecAudio acodec;
     /**
      * the ts context, to keep cc continous between ts.
-     * @see https://github.com/simple-rtmp-server/srs/issues/375
+     * @see https://github.com/ossrs/srs/issues/375
      */
     SrsTsContext* context;
 public:
@@ -302,11 +304,15 @@ public:
     /**
     * whether segment absolutely overflow, for pure audio to reap segment,
     * that is whether the current segment duration>=2*(the segment in config)
-    * @see https://github.com/simple-rtmp-server/srs/issues/151#issuecomment-71155184
+    * @see https://github.com/ossrs/srs/issues/151#issuecomment-71155184
     */
     virtual bool is_segment_absolutely_overflow();
 public:
     virtual int update_acodec(SrsCodecAudio ac);
+    /**
+     * whether current hls muxer is pure audio mode.
+     */
+    virtual bool pure_audio();
     virtual int flush_audio(SrsTsCache* cache);
     virtual int flush_video(SrsTsCache* cache);
     /**
@@ -422,10 +428,11 @@ public:
     */
     virtual int initialize(SrsSource* s, ISrsHlsHandler* h);
     /**
-    * publish stream event, continue to write the m3u8,
-    * for the muxer object not destroyed.
-    */
-    virtual int on_publish(SrsRequest* req);
+     * publish stream event, continue to write the m3u8,
+     * for the muxer object not destroyed.
+     * @param fetch_sequence_header whether fetch sequence from source.
+     */
+    virtual int on_publish(SrsRequest* req, bool fetch_sequence_header);
     /**
     * the unpublish event, only close the muxer, donot destroy the 
     * muxer, for when we continue to publish, the m3u8 will continue.
@@ -441,10 +448,11 @@ public:
     */
     virtual int on_audio(SrsSharedPtrMessage* shared_audio);
     /**
-    * mux the video packets to ts.
-    * @param shared_video, directly ptr, copy it if need to save it.
-    */
-    virtual int on_video(SrsSharedPtrMessage* shared_video);
+     * mux the video packets to ts.
+     * @param shared_video, directly ptr, copy it if need to save it.
+     * @param is_sps_pps whether the video is h.264 sps/pps.
+     */
+    virtual int on_video(SrsSharedPtrMessage* shared_video, bool is_sps_pps);
 private:
     virtual void hls_show_mux_log();
 };

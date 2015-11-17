@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 SRS(simple-rtmp-server)
+Copyright (c) 2013-2015 SRS(ossrs)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -57,7 +57,7 @@ using namespace std;
 // for example, system-interval is x=1s(1000ms),
 // then rusage can be 3*x, for instance, 3*1=3s,
 // the meminfo canbe 6*x, for instance, 6*1=6s,
-// for performance refine, @see: https://github.com/simple-rtmp-server/srs/issues/194
+// for performance refine, @see: https://github.com/ossrs/srs/issues/194
 // @remark, recomment to 1000ms.
 #define SRS_SYS_CYCLE_INTERVAL 1000
 
@@ -770,13 +770,13 @@ int SrsServer::http_handle()
     
 #ifdef SRS_AUTO_HTTP_API
     srs_assert(http_api_mux);
-    if ((ret = http_api_mux->handle("/", new SrsGoApiRoot())) != ERROR_SUCCESS) {
+    if ((ret = http_api_mux->handle("/", new SrsHttpNotFoundHandler())) != ERROR_SUCCESS) {
         return ret;
     }
-    if ((ret = http_api_mux->handle("/api", new SrsGoApiApi())) != ERROR_SUCCESS) {
+    if ((ret = http_api_mux->handle("/api/", new SrsGoApiApi())) != ERROR_SUCCESS) {
         return ret;
     }
-    if ((ret = http_api_mux->handle("/api/v1", new SrsGoApiV1())) != ERROR_SUCCESS) {
+    if ((ret = http_api_mux->handle("/api/v1/", new SrsGoApiV1())) != ERROR_SUCCESS) {
         return ret;
     }
     if ((ret = http_api_mux->handle("/api/v1/versions", new SrsGoApiVersion())) != ERROR_SUCCESS) {
@@ -800,15 +800,44 @@ int SrsServer::http_handle()
     if ((ret = http_api_mux->handle("/api/v1/authors", new SrsGoApiAuthors())) != ERROR_SUCCESS) {
         return ret;
     }
-    if ((ret = http_api_mux->handle("/api/v1/requests", new SrsGoApiRequests())) != ERROR_SUCCESS) {
+    if ((ret = http_api_mux->handle("/api/v1/features", new SrsGoApiFeatures())) != ERROR_SUCCESS) {
         return ret;
     }
-    if ((ret = http_api_mux->handle("/api/v1/vhosts", new SrsGoApiVhosts())) != ERROR_SUCCESS) {
+    if ((ret = http_api_mux->handle("/api/v1/vhosts/", new SrsGoApiVhosts())) != ERROR_SUCCESS) {
         return ret;
     }
-    if ((ret = http_api_mux->handle("/api/v1/streams", new SrsGoApiStreams())) != ERROR_SUCCESS) {
+    if ((ret = http_api_mux->handle("/api/v1/streams/", new SrsGoApiStreams())) != ERROR_SUCCESS) {
         return ret;
     }
+    if ((ret = http_api_mux->handle("/api/v1/clients/", new SrsGoApiClients())) != ERROR_SUCCESS) {
+        return ret;
+    }
+    
+    // test the request info.
+    if ((ret = http_api_mux->handle("/api/v1/tests/requests", new SrsGoApiRequests())) != ERROR_SUCCESS) {
+        return ret;
+    }
+    // test the error code response.
+    if ((ret = http_api_mux->handle("/api/v1/tests/errors", new SrsGoApiError())) != ERROR_SUCCESS) {
+        return ret;
+    }
+    // test the redirect mechenism.
+    if ((ret = http_api_mux->handle("/api/v1/tests/redirects", new SrsHttpRedirectHandler("/api/v1/tests/errors", SRS_CONSTS_HTTP_MovedPermanently))) != ERROR_SUCCESS) {
+        return ret;
+    }
+    // test the http vhost.
+    if ((ret = http_api_mux->handle("error.srs.com/api/v1/tests/errors", new SrsGoApiError())) != ERROR_SUCCESS) {
+        return ret;
+    }
+    
+    // TODO: FIXME: for console.
+    // TODO: FIXME: support reload.
+    std::string dir = _srs_config->get_http_stream_dir() + "/console";
+    if ((ret = http_api_mux->handle("/console/", new SrsHttpFileServer(dir))) != ERROR_SUCCESS) {
+        srs_error("http: mount console dir=%s failed. ret=%d", dir.c_str(), ret);
+        return ret;
+    }
+    srs_trace("http: api mount /console to %s", dir.c_str());
 #endif
 
     return ret;
@@ -867,6 +896,7 @@ void SrsServer::remove(SrsConnection* conn)
     
     SrsStatistic* stat = SrsStatistic::instance();
     stat->kbps_add_delta(conn);
+    stat->on_disconnect(conn->srs_id());
     
     // all connections are created by server,
     // so we free it here.
@@ -1194,16 +1224,35 @@ int SrsServer::accept_client(SrsListenerType type, st_netfd_t client_stfd)
 {
     int ret = ERROR_SUCCESS;
     
+    int fd = st_netfd_fileno(client_stfd);
+    
     int max_connections = _srs_config->get_max_connections();
     if ((int)conns.size() >= max_connections) {
-        int fd = st_netfd_fileno(client_stfd);
-        
         srs_error("exceed the max connections, drop client: "
             "clients=%d, max=%d, fd=%d", (int)conns.size(), max_connections, fd);
             
         srs_close_stfd(client_stfd);
         
         return ret;
+    }
+    
+    // avoid fd leak when fork.
+    // @see https://github.com/ossrs/srs/issues/518
+    if (true) {
+        int val;
+        if ((val = fcntl(fd, F_GETFD, 0)) < 0) {
+            ret = ERROR_SYSTEM_PID_GET_FILE_INFO;
+            srs_error("fnctl F_GETFD error! fd=%d. ret=%#x", fd, ret);
+            srs_close_stfd(client_stfd);
+            return ret;
+        }
+        val |= FD_CLOEXEC;
+        if (fcntl(fd, F_SETFD, val) < 0) {
+            ret = ERROR_SYSTEM_PID_SET_FILE_INFO;
+            srs_error("fcntl F_SETFD error! fd=%d ret=%#x", fd, ret);
+            srs_close_stfd(client_stfd);
+            return ret;
+        }
     }
     
     SrsConnection* conn = NULL;

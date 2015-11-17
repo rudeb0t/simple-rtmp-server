@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 SRS(simple-rtmp-server)
+Copyright (c) 2013-2015 SRS(ossrs)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -181,7 +181,7 @@ class SrsConfig
 private:
     /**
      * whether srs is run in dolphin mode.
-     * @see https://github.com/simple-rtmp-server/srs-dolphin
+     * @see https://github.com/ossrs/srs-dolphin
      */
     bool dolphin;
     std::string dolphin_rtmp_port;
@@ -438,7 +438,7 @@ public:
     * whether debug_srs_upnode is enabled of vhost.
     * debug_srs_upnode is very important feature for tracable log,
     * but some server, for instance, flussonic donot support it.
-    * @see https://github.com/simple-rtmp-server/srs/issues/160
+    * @see https://github.com/ossrs/srs/issues/160
     * @return true when debug_srs_upnode is ok; otherwise, false.
     * @remark, default true.
     */
@@ -500,6 +500,10 @@ public:
     */
     virtual int                 get_chunk_size(std::string vhost);
     /**
+     * whether parse the sps when publish stream to SRS.
+     */
+    virtual bool                get_parse_sps(std::string vhost);
+    /**
     * whether mr is enabled for vhost.
     * @param vhost, the vhost to get the mr.
     */
@@ -522,6 +526,26 @@ public:
     */
     // TODO: FIXME: add utest for min_latency.
     virtual bool                get_realtime_enabled(std::string vhost);
+    /**
+     * whether enable tcp nodelay for all clients of vhost.
+     */
+    virtual bool                get_tcp_nodelay(std::string vhost);
+    /**
+     * the minimal send interval in ms.
+     */
+    virtual double              get_send_min_interval(std::string vhost);
+    /**
+     * whether reduce the sequence header.
+     */
+    virtual bool                get_reduce_sequence_header(std::string vhost);
+    /**
+     * the 1st packet timeout in ms for encoder.
+     */
+    virtual int                 get_publish_1stpkt_timeout(std::string vhost);
+    /**
+     * the normal packet timeout in ms for encoder.
+     */
+    virtual int                 get_publish_normal_timeout(std::string vhost);
 private:
     /**
     * get the global chunk size.
@@ -643,7 +667,7 @@ public:
     virtual bool                get_vhost_edge_token_traverse(std::string vhost);
     /**
      * get the transformed vhost for edge,
-     * @see https://github.com/simple-rtmp-server/srs/issues/372
+     * @see https://github.com/ossrs/srs/issues/372
      */
     virtual std::string         get_vhost_edge_transform_vhost(std::string vhost);
 // vhost security section
@@ -875,7 +899,7 @@ public:
     * get the hls hls_on_error config.
     * the ignore will ignore error and disable hls.
     * the disconnect will disconnect publish connection.
-    * @see https://github.com/simple-rtmp-server/srs/issues/264
+    * @see https://github.com/ossrs/srs/issues/264
     */
     virtual std::string         get_hls_on_error(std::string vhost);
     /**

@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 SRS(simple-rtmp-server)
+Copyright (c) 2013-2015 SRS(ossrs)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -75,7 +75,7 @@ private:
     ISrsWakable* wakable;
     // elapse duration in ms
     // for live play duration, for instance, rtmpdump to record.
-    // @see https://github.com/simple-rtmp-server/srs/issues/47
+    // @see https://github.com/ossrs/srs/issues/47
     int64_t duration;
     SrsKbps* kbps;
     // the MR(merged-write) sleep time in ms.
@@ -83,8 +83,16 @@ private:
     // the MR(merged-write) only enabled for play.
     int mw_enabled;
     // for realtime
-    // @see https://github.com/simple-rtmp-server/srs/issues/257
+    // @see https://github.com/ossrs/srs/issues/257
     bool realtime;
+    // the minimal interval in ms for delivery stream.
+    double send_min_interval;
+    // publish 1st packet timeout in ms
+    int publish_1stpkt_timeout;
+    // publish normal packet timeout in ms
+    int publish_normal_timeout;
+    // whether enable the tcp_nodelay.
+    bool tcp_nodelay;
 public:
     SrsRtmpConn(SrsServer* svr, st_netfd_t c);
     virtual ~SrsRtmpConn();
@@ -96,7 +104,11 @@ protected:
 public:
     virtual int on_reload_vhost_removed(std::string vhost);
     virtual int on_reload_vhost_mw(std::string vhost);
+    virtual int on_reload_vhost_smi(std::string vhost);
+    virtual int on_reload_vhost_tcp_nodelay(std::string vhost);
     virtual int on_reload_vhost_realtime(std::string vhost);
+    virtual int on_reload_vhost_p1stpt(std::string vhost);
+    virtual int on_reload_vhost_pnt(std::string vhost);
 // interface IKbpsDelta
 public:
     virtual void resample();
@@ -119,7 +131,7 @@ private:
     virtual int process_publish_message(SrsSource* source, SrsCommonMessage* msg, bool vhost_is_edge);
     virtual int process_play_control_msg(SrsConsumer* consumer, SrsCommonMessage* msg);
     virtual void change_mw_sleep(int sleep_ms);
-    virtual void play_set_sock_options();
+    virtual void set_sock_options();
 private:
     virtual int check_edge_token_traverse_auth();
     virtual int connect_server(int origin_index, st_netfd_t* pstsock);

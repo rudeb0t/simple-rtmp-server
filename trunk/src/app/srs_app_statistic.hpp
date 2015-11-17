@@ -1,7 +1,7 @@
 /*
 The MIT License (MIT)
 
-Copyright (c) 2013-2015 SRS(simple-rtmp-server)
+Copyright (c) 2013-2015 SRS(ossrs)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -34,9 +34,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <string>
 
 #include <srs_kernel_codec.hpp>
-
-#define STATISTIC_STREAM_STATUS_PUBLISHING    "publishing"
-#define STATISTIC_STREAM_STATUS_IDLING        "idling"
+#include <srs_rtmp_stack.hpp>
 
 class SrsKbps;
 class SrsRequest;
@@ -47,6 +45,8 @@ struct SrsStatisticVhost
 public:
     int64_t id;
     std::string vhost;
+    int nb_streams;
+    int nb_clients;
 public:
     /**
     * vhost total kbps.
@@ -55,6 +55,8 @@ public:
 public:
     SrsStatisticVhost();
     virtual ~SrsStatisticVhost();
+public:
+    virtual int dumps(std::stringstream& ss);
 };
 
 struct SrsStatisticStream
@@ -65,7 +67,9 @@ public:
     std::string app;
     std::string stream;
     std::string url;
-    std::string status;
+    bool active;
+    int connection_cid;
+    int nb_clients;
 public:
     /**
     * stream total kbps.
@@ -94,10 +98,12 @@ public:
     SrsStatisticStream();
     virtual ~SrsStatisticStream();
 public:
+    virtual int dumps(std::stringstream& ss);
+public:
     /**
     * publish the stream.
     */
-    virtual void publish();
+    virtual void publish(int cid);
     /**
     * close the stream.
     */
@@ -108,7 +114,16 @@ struct SrsStatisticClient
 {
 public:
     SrsStatisticStream* stream;
+    SrsConnection* conn;
+    SrsRequest* req;
+    SrsRtmpConnType type;
     int id;
+    int64_t create;
+public:
+    SrsStatisticClient();
+    virtual ~SrsStatisticClient();
+public:
+    virtual int dumps(std::stringstream& ss);
 };
 
 class SrsStatistic
@@ -117,10 +132,19 @@ private:
     static SrsStatistic *_instance;
     // the id to identify the sever.
     int64_t _server_id;
-    // key: vhost name, value: vhost object.
-    std::map<std::string, SrsStatisticVhost*> vhosts;
-    // key: stream url, value: stream object.
-    std::map<std::string, SrsStatisticStream*> streams;
+private:
+    // key: vhost id, value: vhost object.
+    std::map<int64_t, SrsStatisticVhost*> vhosts;
+    // key: vhost url, value: vhost Object.
+    // @remark a fast index for vhosts.
+    std::map<std::string, SrsStatisticVhost*> rvhosts;
+private:
+    // key: stream id, value: stream Object.
+    std::map<int64_t, SrsStatisticStream*> streams;
+    // key: stream url, value: stream Object.
+    // @remark a fast index for streams.
+    std::map<std::string, SrsStatisticStream*> rstreams;
+private:
     // key: client id, value: stream object.
     std::map<int, SrsStatisticClient*> clients;
     // server total kbps.
@@ -130,6 +154,10 @@ private:
     virtual ~SrsStatistic();
 public:
     static SrsStatistic* instance();
+public:
+    virtual SrsStatisticVhost* find_vhost(int vid);
+    virtual SrsStatisticStream* find_stream(int sid);
+    virtual SrsStatisticClient* find_client(int cid);
 public:
     /**
     * when got video info for stream.
@@ -145,9 +173,11 @@ public:
         SrsAacObjectType aac_object
     );
     /**
-    * when publish stream.
-    */
-    virtual void on_stream_publish(SrsRequest* req);
+     * when publish stream.
+     * @param req the request object of publish connection.
+     * @param cid the cid of publish connection.
+     */
+    virtual void on_stream_publish(SrsRequest* req, int cid);
     /**
     * when close stream.
     */
@@ -157,8 +187,10 @@ public:
      * when got a client to publish/play stream,
      * @param id, the client srs id.
      * @param req, the client request object.
+     * @param conn, the physical absract connection object.
+     * @param type, the type of connection.
      */
-    virtual int on_client(int id, SrsRequest* req);
+    virtual int on_client(int id, SrsRequest* req, SrsConnection* conn, SrsRtmpConnType type);
     /**
      * client disconnect
      * @remark the on_disconnect always call, while the on_client is call when
@@ -191,6 +223,12 @@ public:
     * dumps the streams to sstream in json.
     */
     virtual int dumps_streams(std::stringstream& ss);
+    /**
+     * dumps the clients to sstream in json.
+     * @param start the start index, from 0.
+     * @param count the max count of clients to dump.
+     */
+    virtual int dumps_clients(std::stringstream& ss, int start, int count);
 private:
     virtual SrsStatisticVhost* create_vhost(SrsRequest* req);
     virtual SrsStatisticStream* create_stream(SrsStatisticVhost* vhost, SrsRequest* req);
