@@ -251,7 +251,15 @@ int SrsEdgeIngester::connect_app(string ep_server, string ep_port)
     vhost = srs_string_replace(vhost, "[vhost]", req->vhost);
     // generate the tcUrl
     std::string param = "";
+    std::string origin_vhost = _srs_config->get_origin_vhost(req->vhost);
     std::string tc_url = srs_generate_tc_url(ep_server, vhost, req->app, ep_port, param);
+
+    if (origin_vhost == "__default__") {
+        tc_url = "";
+    } else if (!origin_vhost.empty()) {
+        tc_url = srs_generate_tc_url(ep_server, origin_vhost, req->app, ep_port, param);
+    }
+
     srs_trace("edge ingest from %s:%s at %s", ep_server.c_str(), ep_port.c_str(), tc_url.c_str());
     
     // replace the tcUrl in request,

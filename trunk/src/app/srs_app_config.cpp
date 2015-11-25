@@ -1814,7 +1814,7 @@ int SrsConfig::check_config()
                 && n != "publish_1stpkt_timeout" && n != "publish_normal_timeout"
                 && n != "security" && n != "http_remux"
                 && n != "http" && n != "http_static"
-                && n != "hds"
+                && n != "hds" && n != "origin_vhost"
             ) {
                 ret = ERROR_SYSTEM_CONFIG_INVALID;
                 srs_error("unsupported vhost directive %s, ret=%d", n.c_str(), ret);
@@ -2698,6 +2698,21 @@ int SrsConfig::get_publish_normal_timeout(string vhost)
     }
     
     return ::atoi(conf->arg0().c_str());
+}
+
+string SrsConfig::get_origin_vhost(string vhost)
+{
+    SrsConfDirective* conf = get_vhost(vhost);
+    if (!conf) {
+        return "";
+    }
+
+    conf = conf->get("origin_vhost");
+    if (!conf || conf->arg0().empty()) {
+        return "";
+    }
+
+    return conf->arg0();
 }
 
 int SrsConfig::get_global_chunk_size()

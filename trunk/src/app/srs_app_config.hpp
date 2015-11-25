@@ -559,6 +559,7 @@ public:
      * the normal packet timeout in ms for encoder.
      */
     virtual int                 get_publish_normal_timeout(std::string vhost);
+    virtual std::string         get_origin_vhost(std::string vhost);
 private:
     /**
     * get the global chunk size.
