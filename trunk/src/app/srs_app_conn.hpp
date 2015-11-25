@@ -36,6 +36,12 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <srs_app_thread.hpp>
 #include <srs_protocol_kbps.hpp>
 
+enum Connection_Type {
+    CONNECTION_TYPE_OTHER,          // type: other
+    CONNECTION_TYPE_RTMP,           // type: rtmp
+    CONNECTION_TYPE_HDL             // type: http flv live stream
+};
+
 class SrsConnection;
 
 /**
@@ -70,6 +76,12 @@ private:
     * the id of connection.
     */
     int id;
+    /**
+    * connection type
+    * @see Connection_Type
+    */
+    Connection_Type connection_type;
+
 protected:
     /**
     * the manager object to manage the connection.
@@ -125,6 +137,18 @@ public:
     * then delete the connection.
     */
     virtual void on_thread_stop();
+
+    /**
+    * get connection type
+    * @return the connection type
+    */
+    Connection_Type get_connection_type();
+    /**
+    * get peer ip
+    * @return the peer ip
+    */
+    std::string get_peer_ip();
+
 public:
     /**
     * get the srs id which identify the client.
@@ -139,6 +163,12 @@ protected:
     * for concrete connection to do the cycle.
     */
     virtual int do_cycle() = 0;
+
+    /**
+    * set connection type
+    * @param ctype the specified type
+    */
+    void set_connection_type(Connection_Type ctype);
 };
 
 #endif

@@ -48,6 +48,7 @@ using namespace std;
 #include <srs_app_statistic.hpp>
 #include <srs_app_caster_flv.hpp>
 #include <srs_core_mem_watch.hpp>
+#include <srs_rtmp_stack.hpp>
 
 // signal defines.
 #define SIGNAL_RELOAD SIGHUP
@@ -93,6 +94,8 @@ using namespace std;
 // update network devices info interval:
 //      SRS_SYS_CYCLE_INTERVAL * SRS_SYS_NETWORK_DEVICE_RESOLUTION_TIMES
 #define SRS_SYS_NETWORK_DEVICE_RESOLUTION_TIMES 9
+
+#define FILE_TEMP_PATH ( "/tmp/srs_data_on_close" )
 
 std::string srs_listener_type2string(SrsListenerType type) 
 {
@@ -968,6 +971,82 @@ int SrsServer::do_cycle()
             // gracefully quit for SIGINT or SIGTERM.
             if (signal_gracefully_quit) {
                 srs_trace("cleanup for gracefully terminate.");
+                srs_trace("user terminate program, now collect the connection info.");
+
+                int id = 1;
+                std::string data("[");
+                int conn_size = conns.size();
+
+                for (int i = 0; i < conn_size; ++i) {
+                    SrsConnection *conn = conns.at(i);
+
+                    if (conn->get_connection_type() == CONNECTION_TYPE_RTMP)
+                    {
+                        SrsRtmpConn *rtmp_conn = dynamic_cast<SrsRtmpConn *>(conn);
+
+                        int32_t rtmp_type = rtmp_conn->get_rtmp_type();
+                        if (rtmp_conn && rtmp_type != SrsRtmpConnUnknown)
+                        {
+                            std::string ip      = rtmp_conn->get_peer_ip();
+                            bool isPublish      = (rtmp_type != SrsRtmpConnPlay);
+                            int64_t bytesRecv   = rtmp_conn->get_recv_bytes();
+                            int64_t bytesSend   = rtmp_conn->get_send_bytes();
+                            std::string isPublishStr = isPublish ? "true" : "false";
+
+                            int buf_size = 1024;
+                            char buf[buf_size];
+
+                            int bytes = snprintf(buf, buf_size,
+                                                 "{clientID: %d, "
+                                                 "clientIP: \"%s\", "
+                                                 "isPublish: %s, "
+                                                 "bytesRecv: %lld, "
+                                                 "bytesSend: %lld},"
+                                                 , id++
+                                                 , ip.c_str()
+                                                 , isPublishStr.c_str()
+                                                 , bytesRecv
+                                                 , bytesSend);
+
+                            data.append(buf, bytes);
+                        }
+                    }
+                }
+
+                // remove json array last ','
+                if (data.size() > 1) {
+                    data.erase(data.size() - 1, 1);
+                }
+
+                data.append("]");
+
+                srs_trace("conntion info=%s", data.c_str());
+
+                int fd = open(FILE_TEMP_PATH, O_WRONLY | O_CREAT, S_IRWXU | S_IRWXG);
+                if (fd > 0) {
+                    int bytes = write(fd, data.data(), data.size());
+                    if (bytes != (int)data.size()) {
+                        srs_error("write close data to file error, ignored.");
+                    } else {
+                        srs_trace("write data to %s, OK", FILE_TEMP_PATH);
+
+                        bool enabled = _srs_config->get_exec_on_close_enabled();
+                        if (enabled) {
+                            std::string path = _srs_config->get_exec_path();
+                            path.append(" ");
+                            path.append(FILE_TEMP_PATH);
+                            path.append(" ");
+                            path.append("&"); // to run in back-ground.
+
+                            system(path.c_str());
+                        }
+                    }
+
+                    close(fd);
+                } else {
+                    srs_error("open file %s error", FILE_TEMP_PATH);
+                }
+
                 return ret;
             }
         

@@ -78,6 +78,7 @@ private:
     // @see https://github.com/ossrs/srs/issues/47
     int64_t duration;
     SrsKbps* kbps;
+    int32_t rtmp_conn_type;
     // the MR(merged-write) sleep time in ms.
     int mw_sleep;
     // the MR(merged-write) only enabled for play.
@@ -114,6 +115,9 @@ public:
     virtual void resample();
     virtual int64_t get_send_bytes_delta();
     virtual int64_t get_recv_bytes_delta();
+    virtual int64_t get_send_bytes();
+    virtual int64_t get_recv_bytes();
+    virtual int32_t get_rtmp_type();
     virtual void cleanup();
 private:
     // when valid and connected to vhost/app, service the client.

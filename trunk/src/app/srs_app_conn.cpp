@@ -48,6 +48,7 @@ SrsConnection::SrsConnection(IConnectionManager* cm, st_netfd_t c)
     // TODO: FIXME: maybe other thread need to stop it.
     // @see: https://github.com/ossrs/srs/issues/78
     pthread = new SrsOneCycleThread("conn", this);
+    set_connection_type(CONNECTION_TYPE_OTHER);
 }
 
 SrsConnection::~SrsConnection()
@@ -110,6 +111,21 @@ void SrsConnection::on_thread_stop()
 {
     // TODO: FIXME: never remove itself, use isolate thread to do cleanup.
     manager->remove(this);
+}
+
+Connection_Type SrsConnection::get_connection_type()
+{
+    return connection_type;
+}
+
+std::string SrsConnection::get_peer_ip()
+{
+    return ip;
+}
+
+void SrsConnection::set_connection_type(Connection_Type ctype)
+{
+    connection_type = ctype;
 }
 
 int SrsConnection::srs_id()

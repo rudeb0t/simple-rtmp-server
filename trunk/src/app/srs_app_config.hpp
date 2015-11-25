@@ -374,6 +374,19 @@ public:
      * whether use utc-time to format the time.
      */
     virtual bool                get_utc_time();
+
+    /**
+    * get exec function is enabled or not.
+    */
+    virtual bool get_exec_on_close_enabled();
+
+    /**
+    * get exec tool path.
+    * @return the exec tool path, must like this: tool_path conntions_info.file_path
+    * @code ~/user/exec.sh /tmp/srs_close_info.txt
+    */
+    virtual std::string get_exec_path();
+
 // stream_caster section
 public:
     /**

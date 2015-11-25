@@ -1561,7 +1561,7 @@ int SrsConfig::check_config()
             && n != "max_connections" && n != "daemon" && n != "heartbeat"
             && n != "http_api" && n != "stats" && n != "vhost" && n != "pithy_print_ms"
             && n != "http_stream" && n != "http_server" && n != "stream_caster"
-            && n != "utc_time"
+            && n != "utc_time" && n != "exec_on_close"
         ) {
             ret = ERROR_SYSTEM_CONFIG_INVALID;
             srs_error("unsupported directive %s, ret=%d", n.c_str(), ret);
@@ -2164,6 +2164,34 @@ bool SrsConfig::get_utc_time()
     }
     
     return SRS_CONF_PERFER_FALSE(conf->arg0());
+}
+
+bool SrsConfig::get_exec_on_close_enabled()
+{
+    SrsConfDirective* conf = root->get("exec_on_close");
+
+    if (!conf) {
+        return false;
+    }
+
+    SrsConfDirective* enabled = conf->get("enabled");
+    if (!enabled) {
+        return false;
+    }
+
+    return enabled->arg0() == "on";
+}
+
+string SrsConfig::get_exec_path()
+{
+    srs_assert(get_exec_on_close_enabled());
+
+    SrsConfDirective* conf = root->get("exec_on_close");
+    SrsConfDirective* exec_path = conf->get("exec");
+
+    srs_assert(exec_path);
+
+    return exec_path->arg0();
 }
 
 vector<SrsConfDirective*> SrsConfig::get_stream_casters()

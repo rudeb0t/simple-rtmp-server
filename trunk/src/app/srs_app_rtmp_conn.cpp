@@ -97,6 +97,9 @@ SrsRtmpConn::SrsRtmpConn(SrsServer* svr, st_netfd_t c)
     tcp_nodelay = false;
     
     _srs_config->subscribe(this);
+
+    set_connection_type(CONNECTION_TYPE_RTMP);
+    rtmp_conn_type = SrsRtmpConnUnknown;
 }
 
 SrsRtmpConn::~SrsRtmpConn()
@@ -343,6 +346,21 @@ int64_t SrsRtmpConn::get_recv_bytes_delta()
     return kbps->get_recv_bytes_delta();
 }
 
+int64_t SrsRtmpConn::get_send_bytes()
+{
+    return kbps->get_send_bytes();
+}
+
+int64_t SrsRtmpConn::get_recv_bytes()
+{
+    return kbps->get_recv_bytes();
+}
+
+int32_t SrsRtmpConn::get_rtmp_type()
+{
+    return rtmp_conn_type;
+}
+
 void SrsRtmpConn::cleanup()
 {
     kbps->cleanup();
@@ -467,6 +485,8 @@ int SrsRtmpConn::stream_service_cycle()
         }
         return ret;
     }
+
+    rtmp_conn_type = (int32_t)type;
     req->strip();
     srs_trace("client identified, type=%s, stream_name=%s, duration=%.2f", 
         srs_client_type_string(type).c_str(), req->stream.c_str(), req->duration);
