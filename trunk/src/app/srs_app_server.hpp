@@ -351,6 +351,7 @@ private:
     * resample the server kbs.
     */
     virtual void resample_kbps();
+    virtual void reportConnectionInfo();
 // internal only
 public:
     /**

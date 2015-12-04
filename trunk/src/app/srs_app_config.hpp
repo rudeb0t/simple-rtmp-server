@@ -379,6 +379,10 @@ public:
     * get exec function is enabled or not.
     */
     virtual bool get_exec_on_close_enabled();
+    /**
+    * get exec function temp file path.
+    */
+    virtual std::string get_exec_on_close_file_path();
 
     /**
     * get exec tool path.

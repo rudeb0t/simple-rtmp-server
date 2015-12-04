@@ -141,6 +141,8 @@ using namespace _srs_internal;
 #define SRS_CONF_DEFAULT_HDS_WINDOW     (60)
 #define SRS_CONF_DEFAULT_HDS_FRAGMENT   (10)
 
+#define FILE_TEMP_PATH ( "/tmp/srs_data_on_close" )
+
 // '\n'
 #define SRS_LF (char)SRS_CONSTS_LF
 
@@ -2180,6 +2182,22 @@ bool SrsConfig::get_exec_on_close_enabled()
     }
 
     return enabled->arg0() == "on";
+}
+
+string SrsConfig::get_exec_on_close_file_path()
+{
+    SrsConfDirective* conf = root->get("exec_on_close");
+
+    if (!conf) {
+        return FILE_TEMP_PATH;
+    }
+
+    SrsConfDirective* path = conf->get("path");
+    if (!path) {
+        return FILE_TEMP_PATH;
+    }
+
+    return path->arg0();
 }
 
 string SrsConfig::get_exec_path()
